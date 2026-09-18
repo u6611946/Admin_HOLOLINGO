@@ -1,0 +1,196 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function hasAdminAccount() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function adminRole() {
+      return get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role;
+    }
+
+    // Any signed-in admin-panel account (super_admin, admin, or viewer) — read access to admin data.
+    function isPanelUser() {
+      return hasAdminAccount() && adminRole() in ['super_admin', 'admin', 'viewer'];
+    }
+
+    // Can manage app content (users, scans, announcements, events) but not other admins or settings.
+    function isModerator() {
+      return hasAdminAccount() && adminRole() in ['super_admin', 'admin'];
+    }
+
+    // Full access: manage other admins and app-wide settings.
+    function isSuperAdmin() {
+      return hasAdminAccount() && adminRole() == 'super_admin';
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /admins/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isPanelUser());
+      allow create: if isSuperAdmin();
+      allow update: if isSuperAdmin();
+      allow delete: if isSuperAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isPanelUser());
+      allow create: if isOwner(userId);
+      allow update: if isSignedIn() && (request.auth.uid == userId || isModerator());
+      allow delete: if isModerator();
+
+      match /saved_words/{word} {
+        allow read: if isSignedIn() && (request.auth.uid == userId || isPanelUser());
+        allow write: if isSignedIn() && (request.auth.uid == userId || isModerator());
+      }
+
+      match /chat_history/{msg} {
+        allow read: if isSignedIn() && (request.auth.uid == userId || isPanelUser());
+        allow write: if isSignedIn() && (request.auth.uid == userId || isModerator());
+      }
+
+      match /streak/{day} {
+        allow read: if isSignedIn() && (request.auth.uid == userId || isPanelUser());
+        allow write: if isSignedIn() && (request.auth.uid == userId || isModerator());
+      }
+
+      match /progress/{doc} {
+        allow read: if isSignedIn() && (request.auth.uid == userId || isPanelUser());
+        allow write: if isSignedIn() && (request.auth.uid == userId || isModerator());
+      }
+
+      match /topic_progress/{topicId} {
+        allow read: if isSignedIn() && (request.auth.uid == userId || isPanelUser());
+        allow write: if isSignedIn() && (request.auth.uid == userId || isModerator());
+      }
+
+      match /friends/{friendId} {
+        allow read: if isSignedIn() && (request.auth.uid == userId || isPanelUser());
+        allow write: if isSignedIn() && (request.auth.uid == userId || isModerator());
+      }
+    }
+
+    // Collection group queries (collectionGroup('saved_words'), collectionGroup('chat_history'))
+    // need an explicit wildcard-path rule — the nested rules above only cover direct reads of a
+    // known user's subcollection.
+    match /{path=**}/saved_words/{word} {
+      allow read: if isPanelUser();
+    }
+
+    match /{path=**}/chat_history/{msg} {
+      allow read: if isPanelUser();
+    }
+
+    match /friend_requests/{requestId} {
+      allow create: if isSignedIn()
+        && request.auth.uid == request.resource.data.from;
+
+      allow read: if isSignedIn() && (
+        request.auth.uid == resource.data.from ||
+        request.auth.uid == resource.data.to ||
+        isPanelUser()
+      );
+
+      allow update: if isModerator();
+      allow delete: if isSignedIn() && (
+        request.auth.uid == resource.data.from ||
+        request.auth.uid == resource.data.to ||
+        isModerator()
+      );
+    }
+
+    match /friendships/{friendshipId} {
+      allow create: if isSignedIn()
+        && request.auth.uid in request.resource.data.users;
+
+      allow read: if isSignedIn() && (
+        request.auth.uid in resource.data.users ||
+        isPanelUser()
+      );
+
+      allow delete: if isSignedIn() && (
+        request.auth.uid in resource.data.users ||
+        isModerator()
+      );
+    }
+
+    match /bonds/{bondId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid in resource.data.users ||
+        isPanelUser()
+      );
+
+      allow create: if isSignedIn()
+        && request.auth.uid in request.resource.data.users;
+
+      allow update: if isSignedIn() && (
+        request.auth.uid in resource.data.users ||
+        isModerator()
+      );
+    }
+
+    match /config/{doc} {
+      // Public read: feature flags like registrationEnabled must be checkable before sign-in/sign-up.
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
+    match /scan_history/{scanId} {
+      allow create: if isSignedIn()
+        && request.resource.data.user_id == request.auth.uid;
+
+      allow read: if isSignedIn() && (
+        resource.data.user_id == request.auth.uid ||
+        isPanelUser()
+      );
+
+      allow update: if isModerator();
+      allow delete: if isModerator();
+    }
+
+    match /events/{eventId} {
+      allow read: if isSignedIn();
+      allow write: if isModerator();
+
+      match /targets/{targetId} {
+        allow read: if isSignedIn();
+        allow write: if false;
+      }
+    }
+
+    match /announcements/{announcementId} {
+      allow read: if isPanelUser();
+      allow write: if isModerator();
+    }
+
+    // Not written by the app yet (no flagging/feedback/billing feature built) — read-only
+    // placeholders for the admin panel until those features exist. Tighten write once they do.
+    match /flagged/{id} {
+      allow read: if isPanelUser();
+      allow write: if false;
+    }
+
+    match /feedback/{id} {
+      allow read: if isPanelUser();
+      allow write: if false;
+    }
+
+    match /subscriptions/{id} {
+      allow read: if isPanelUser();
+      allow write: if false;
+    }
+
+    match /words/{wordId} {
+      allow read: if isPanelUser();
+      allow write: if isModerator();
+    }
+  }
+}

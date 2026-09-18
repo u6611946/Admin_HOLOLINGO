@@ -3,142 +3,416 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useTheme } from '../../ThemeContext';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { auth } from '../../../lib/firebase';
+import { collection, doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { db } from '../../../lib/firebase';
 
 const navItems = [
   {
     section: 'Overview',
     items: [
       { href: '/admin/dashboard', icon: '⊞', label: 'Dashboard' },
-      { href: '/admin/analytics', icon: '◷', label: 'Analytics' },
+      { href: '/admin/analytics', icon: '◷', label: 'Reports' },
     ],
   },
   {
     section: 'Users',
     items: [
-      { href: '/admin/users',    icon: '◯', label: 'All users', badge: '1,284', badgeStyle: 'count' },
-      { href: '/admin/flagged',  icon: '⚑', label: 'Flagged',   badge: '3',     badgeStyle: 'alert' },
-      { href: '/admin/feedback', icon: '◈', label: 'Feedback' },
+      {
+        href: '/admin/users',
+        icon: '◯',
+        label: 'Users',
+        badgeStyle: 'count',
+      },
+      {
+        href: '/admin/flagged',
+        icon: '⚑',
+        label: 'Flagged',
+        badgeStyle: 'alert',
+      },
+      {
+        href: '/admin/feedback',
+        icon: '◈',
+        label: 'Feedback',
+      },
     ],
   },
   {
     section: 'Content',
     items: [
-      { href: '/admin/words',      icon: '☷',     label: 'Word database'    },
-      { href: '/admin/languages',  icon: '◉',     label: 'Languages'        },
-      { href: '/admin/challenges', icon: '✦',     label: 'Daily challenges' },
-      { href: '/admin/gobot',      icon: 'robot', label: 'Gobot AI'         },
+      {
+        href: '/admin/popular-words',
+        icon: '✦',
+        label: 'Popular words',
+      },
+      {
+        href: '/admin/announcements',
+        icon: '꒰ ✉︎ ꒱',
+        label: 'Announcements',
+      },
+      {
+        href: '/admin/subscription',
+        icon: '◉',
+        label: 'Subscription',
+      },
+      {
+        href: '/admin/gobot',
+        icon: 'robot',
+        label: 'Gobot AI',
+      },
     ],
   },
   {
     section: 'System',
     items: [
-      { href: '/admin/notifications', icon: '⊕', label: 'Notifications' },
-      { href: '/admin/settings',      icon: '⚙', label: 'Settings'      },
+      {
+        href: '/admin/settings',
+        icon: '⚙',
+        label: 'Settings',
+      },
     ],
   },
 ];
 
-// ── SHARED MODAL WRAPPER ─────────────────────────────────────────
+/* ─────────────────────────────────────────────────────────────
+   SHARED MODAL
+───────────────────────────────────────────────────────────── */
+
 function Modal({ title, subtitle, onClose, children }) {
+  const { theme } = useTheme();
+
   return (
     <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 200 }} />
       <div
-        onClick={e => e.stopPropagation()}
+        onClick={onClose}
         style={{
-          position: 'fixed', top: '50%', left: '50%',
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,.6)',
+          zIndex: 200,
+        }}
+      />
+
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
           transform: 'translate(-50%, -50%)',
-          width: '100%', maxWidth: '420px',
-          background: 'linear-gradient(180deg, #0d1e2a 0%, #071018 100%)',
-          border: '1px solid rgba(0,229,255,.18)',
-          borderRadius: '16px', zIndex: 201,
-          boxShadow: '0 24px 64px rgba(0,0,0,.8)',
+          width: '100%',
+          maxWidth: '420px',
+          background: theme.bgCard,
+          border: `1px solid ${theme.accentBorder}`,
+          borderRadius: '16px',
+          zIndex: 201,
+          boxShadow:
+            theme.mode === 'dark'
+              ? '0 24px 64px rgba(0,0,0,.8)'
+              : '0 20px 50px rgba(0,0,0,.15)',
           overflow: 'hidden',
+          color: theme.text,
         }}
       >
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #0d2030' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '16px 20px',
+            borderBottom: `1px solid ${theme.border}`,
+          }}
+        >
           <div>
-            <div style={{ color: '#fff', fontSize: '15px', fontWeight: 600 }}>{title}</div>
-            {subtitle && <div style={{ color: '#3a5060', fontSize: '11px', marginTop: '3px' }}>{subtitle}</div>}
+            <div
+              style={{
+                color: theme.textStrong,
+                fontSize: '15px',
+                fontWeight: 600,
+              }}
+            >
+              {title}
+            </div>
+
+            {subtitle && (
+              <div
+                style={{
+                  color: theme.textMuted,
+                  fontSize: '11px',
+                  marginTop: '3px',
+                }}
+              >
+                {subtitle}
+              </div>
+            )}
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#3a5060', fontSize: '20px', cursor: 'pointer', lineHeight: 1 }}>×</button>
+
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: theme.textMuted,
+              fontSize: '20px',
+              cursor: 'pointer',
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
         </div>
+
         {children}
       </div>
     </>
   );
 }
 
-// ── EDIT PROFILE MODAL ───────────────────────────────────────────
-function EditProfileModal({ onClose }) {
-  const [name,   setName]   = useState('Admin');
-  const [email,  setEmail]  = useState('admin@hololingo.app');
+/* ─────────────────────────────────────────────────────────────
+   EDIT PROFILE MODAL
+───────────────────────────────────────────────────────────── */
+
+const RENAME_COOLDOWN_DAYS = 30;
+
+function daysUntilRenameAllowed(nameUpdatedAt) {
+  if (!nameUpdatedAt) return 0;
+  const nextAllowed = new Date(nameUpdatedAt).getTime() + RENAME_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
+  const remainingMs = nextAllowed - Date.now();
+  return remainingMs > 0 ? Math.ceil(remainingMs / (24 * 60 * 60 * 1000)) : 0;
+}
+
+function EditProfileModal({ onClose, account, onUpdated }) {
+  const { theme } = useTheme();
+
+  const [name, setName] = useState(account.name || '');
   const [saving, setSaving] = useState(false);
-  const [saved,  setSaved]  = useState(false);
-  const [error,  setError]  = useState('');
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState('');
+
+  const remainingDays = daysUntilRenameAllowed(account.nameUpdatedAt);
+  const canRename = remainingDays === 0;
 
   const handleSave = async () => {
-    if (!name.trim())  { setError('Name is required.');  return; }
-    if (!email.trim()) { setError('Email is required.'); return; }
+    if (!name.trim()) {
+      setError('Name is required.');
+      return;
+    }
+
+    if (!auth?.currentUser) {
+      setError('You are not signed in.');
+      return;
+    }
+
+    if (name.trim() === (account.name || '')) {
+      onClose();
+      return;
+    }
+
     setError('');
     setSaving(true);
-    await new Promise(r => setTimeout(r, 700)); // replace with real API call
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => { setSaved(false); onClose(); }, 1200);
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const response = await fetch('/api/admin/profile', {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Unable to update your profile.');
+      await auth.currentUser.reload();
+      onUpdated({ name: result.name, nameUpdatedAt: result.nameUpdatedAt });
+      setSaved(true);
+      setTimeout(() => {
+        setSaved(false);
+        onClose();
+      }, 1200);
+    } catch (saveError) {
+      setError(saveError.message || 'Unable to update your profile.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const inputStyle = {
-    width: '100%', background: '#071014', border: '1px solid #0d2030',
-    borderRadius: '8px', padding: '9px 12px', color: '#ccc',
-    fontSize: '13px', outline: 'none', boxSizing: 'border-box',
+    width: '100%',
+    background: theme.bgInput,
+    border: `1px solid ${theme.border}`,
+    borderRadius: '8px',
+    padding: '9px 12px',
+    color: theme.text,
+    fontSize: '13px',
+    outline: 'none',
+    boxSizing: 'border-box',
   };
 
   return (
-    <Modal title="Edit profile" subtitle="Update your display info" onClose={onClose}>
+    <Modal
+      title="Edit profile"
+      subtitle="Update your display info"
+      onClose={onClose}
+    >
       <div style={{ padding: '18px 20px' }}>
 
         {/* Avatar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '18px', padding: '12px 14px', background: 'rgba(0,229,255,.04)', border: '1px solid rgba(0,229,255,.08)', borderRadius: '10px' }}>
-          <div style={{ width: '44px', height: '44px', borderRadius: '50%', flexShrink: 0, background: 'linear-gradient(135deg, rgba(0,229,255,.18), rgba(0,229,255,.05))', border: '1px solid rgba(0,229,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00e5ff', fontSize: '18px', fontWeight: 700 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            marginBottom: '18px',
+            padding: '12px 14px',
+            background: theme.accentBg,
+            border: `1px solid ${theme.accentBorder}`,
+            borderRadius: '10px',
+          }}
+        >
+          <div
+            style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: '50%',
+              flexShrink: 0,
+              background: theme.accentBg,
+              border: `1px solid ${theme.accentBorder}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: theme.accent,
+              fontSize: '18px',
+              fontWeight: 700,
+            }}
+          >
             {name.charAt(0).toUpperCase()}
           </div>
+
           <div>
-            <div style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>{name || 'Admin'}</div>
-            <div style={{ color: '#3a5060', fontSize: '11px', marginTop: '2px' }}>Super admin</div>
+            <div
+              style={{
+                color: theme.textStrong,
+                fontSize: '13px',
+                fontWeight: 600,
+              }}
+            >
+              {name || 'Admin'}
+            </div>
+
+            <div
+              style={{
+                color: theme.textMuted,
+                fontSize: '11px',
+                marginTop: '2px',
+              }}
+            >
+              {account.role}
+            </div>
           </div>
         </div>
 
         {/* Name */}
         <div style={{ marginBottom: '14px' }}>
-          <div style={{ color: '#3a8090', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '6px' }}>Display name</div>
+          <div
+            style={{
+              color: theme.accent,
+              fontSize: '10px',
+              textTransform: 'uppercase',
+              letterSpacing: '.06em',
+              marginBottom: '6px',
+            }}
+          >
+            Display name
+          </div>
+
           <input
-            style={inputStyle} value={name}
-            onChange={e => setName(e.target.value)} placeholder="Your name"
-            onFocus={e => (e.target.style.borderColor = 'rgba(0,229,255,.4)')}
-            onBlur={e  => (e.target.style.borderColor = '#0d2030')}
+            style={{ ...inputStyle, opacity: canRename ? 1 : 0.6, cursor: canRename ? 'text' : 'not-allowed' }}
+            value={name}
+            disabled={!canRename}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Your name"
+            onFocus={(e) =>
+              (e.target.style.borderColor = theme.accentBorder)
+            }
+            onBlur={(e) =>
+              (e.target.style.borderColor = theme.border)
+            }
           />
+          {!canRename && (
+            <div style={{ color: theme.textMuted, fontSize: '11px', marginTop: '6px' }}>
+              You can rename again in {remainingDays} day{remainingDays === 1 ? '' : 's'}.
+            </div>
+          )}
         </div>
 
-        {/* Email */}
-        <div style={{ marginBottom: '4px' }}>
-          <div style={{ color: '#3a8090', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '6px' }}>Email address</div>
-          <input
-            style={inputStyle} type="email" value={email}
-            onChange={e => setEmail(e.target.value)} placeholder="you@example.com"
-            onFocus={e => (e.target.style.borderColor = 'rgba(0,229,255,.4)')}
-            onBlur={e  => (e.target.style.borderColor = '#0d2030')}
-          />
-        </div>
+        {/* Error */}
+        {error && (
+          <div
+            style={{
+              color: theme.danger,
+              fontSize: '12px',
+              marginTop: '10px',
+              padding: '8px 12px',
+              background: 'rgba(255,107,107,.08)',
+              border: '1px solid rgba(255,107,107,.15)',
+              borderRadius: '8px',
+            }}
+          >
+            {error}
+          </div>
+        )}
 
-        {error && <div style={{ color: '#ff6b6b', fontSize: '12px', marginTop: '10px', padding: '8px 12px', background: 'rgba(255,107,107,.08)', border: '1px solid rgba(255,107,107,.15)', borderRadius: '8px' }}>{error}</div>}
+        {/* Buttons */}
+        <div
+          style={{
+            display: 'flex',
+            gap: '10px',
+            marginTop: '18px',
+          }}
+        >
+          <button
+            onClick={onClose}
+            style={{
+              flex: 1,
+              padding: '10px',
+              borderRadius: '10px',
+              border: `1px solid ${theme.border}`,
+              background: 'transparent',
+              color: theme.textMuted,
+              fontSize: '13px',
+              cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
 
-        <div style={{ display: 'flex', gap: '10px', marginTop: '18px' }}>
-          <button onClick={onClose} style={{ flex: 1, padding: '10px', borderRadius: '10px', border: '1px solid #0d2030', background: 'transparent', color: '#3a5060', fontSize: '13px', cursor: 'pointer' }}>Cancel</button>
-          <button onClick={handleSave} disabled={saving} style={{ flex: 2, padding: '10px', borderRadius: '10px', border: `1px solid ${saved ? 'rgba(74,222,128,.35)' : 'rgba(0,229,255,.35)'}`, background: saved ? 'rgba(74,222,128,.1)' : 'rgba(0,229,255,.1)', color: saved ? '#4ade80' : '#00e5ff', fontSize: '13px', fontWeight: 600, cursor: 'pointer', transition: 'all .2s', opacity: saving ? 0.7 : 1 }}>
-            {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save changes'}
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            style={{
+              flex: 2,
+              padding: '10px',
+              borderRadius: '10px',
+              border: `1px solid ${
+                saved ? 'rgba(74,222,128,.35)' : theme.accentBorder
+              }`,
+              background: saved
+                ? 'rgba(74,222,128,.1)'
+                : theme.accentBg,
+              color: saved ? '#4ade80' : theme.accent,
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all .2s',
+              opacity: saving ? 0.7 : 1,
+            }}
+          >
+            {saving
+              ? 'Saving…'
+              : saved
+              ? '✓ Saved'
+              : 'Save changes'}
           </button>
         </div>
       </div>
@@ -146,110 +420,351 @@ function EditProfileModal({ onClose }) {
   );
 }
 
-// ── CHANGE PASSWORD MODAL ────────────────────────────────────────
+/* ─────────────────────────────────────────────────────────────
+   CHANGE PASSWORD MODAL
+───────────────────────────────────────────────────────────── */
+
 function ChangePasswordModal({ onClose }) {
+  const { theme } = useTheme();
+
   const [current, setCurrent] = useState('');
   const [newPass, setNewPass] = useState('');
   const [confirm, setConfirm] = useState('');
   const [showCur, setShowCur] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showCon, setShowCon] = useState(false);
-  const [saving,  setSaving]  = useState(false);
-  const [saved,   setSaved]   = useState(false);
-  const [error,   setError]   = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState('');
 
   const strength = (() => {
     const p = newPass;
+
     if (!p) return null;
+
     let s = 0;
-    if (p.length >= 8)          s++;
-    if (/[A-Z]/.test(p))        s++;
-    if (/[0-9]/.test(p))        s++;
+
+    if (p.length >= 8) s++;
+    if (/[A-Z]/.test(p)) s++;
+    if (/[0-9]/.test(p)) s++;
     if (/[^A-Za-z0-9]/.test(p)) s++;
-    if (s <= 1) return { label: 'Weak',   color: '#ff6b6b', pct: '25%'  };
-    if (s === 2) return { label: 'Fair',   color: '#f59e0b', pct: '50%'  };
-    if (s === 3) return { label: 'Good',   color: '#00e5ff', pct: '75%'  };
-    return               { label: 'Strong', color: '#4ade80', pct: '100%' };
+
+    if (s <= 1) {
+      return {
+        label: 'Weak',
+        color: '#ff6b6b',
+        pct: '25%',
+      };
+    }
+
+    if (s === 2) {
+      return {
+        label: 'Fair',
+        color: '#f59e0b',
+        pct: '50%',
+      };
+    }
+
+    if (s === 3) {
+      return {
+        label: 'Good',
+        color: theme.accent,
+        pct: '75%',
+      };
+    }
+
+    return {
+      label: 'Strong',
+      color: '#4ade80',
+      pct: '100%',
+    };
   })();
 
   const handleSave = async () => {
-    if (!current)           { setError('Enter your current password.');     return; }
-    if (newPass.length < 8) { setError('New password needs 8+ characters.'); return; }
-    if (newPass !== confirm) { setError('Passwords do not match.');          return; }
+    if (!current) {
+      setError('Enter your current password.');
+      return;
+    }
+
+    if (newPass.length < 8) {
+      setError('New password needs 8+ characters.');
+      return;
+    }
+
+    if (newPass !== confirm) {
+      setError('Passwords do not match.');
+      return;
+    }
+
     setError('');
     setSaving(true);
-    await new Promise(r => setTimeout(r, 700)); // replace with real API call
+
+    await new Promise((r) => setTimeout(r, 700));
+
     setSaving(false);
     setSaved(true);
-    setTimeout(() => { setSaved(false); onClose(); }, 1200);
+
+    setTimeout(() => {
+      setSaved(false);
+      onClose();
+    }, 1200);
   };
 
   const inputStyle = {
-    flex: 1, background: 'none', border: 'none',
-    padding: '9px 12px', color: '#ccc', fontSize: '13px', outline: 'none',
+    flex: 1,
+    background: 'none',
+    border: 'none',
+    padding: '9px 12px',
+    color: theme.text,
+    fontSize: '13px',
+    outline: 'none',
   };
 
   const passWrap = (hasError) => ({
-    display: 'flex', alignItems: 'center',
-    background: '#071014',
-    border: `1px solid ${hasError ? 'rgba(255,107,107,.4)' : '#0d2030'}`,
-    borderRadius: '8px', overflow: 'hidden',
+    display: 'flex',
+    alignItems: 'center',
+    background: theme.bgInput,
+    border: `1px solid ${
+      hasError ? 'rgba(255,107,107,.4)' : theme.border
+    }`,
+    borderRadius: '8px',
+    overflow: 'hidden',
   });
 
   const eyeBtn = (fn, show) => (
-    <button onClick={fn} style={{ background: 'none', border: 'none', color: '#3a5060', cursor: 'pointer', padding: '0 12px', fontSize: '14px' }}>
+    <button
+      onClick={fn}
+      style={{
+        background: 'none',
+        border: 'none',
+        color: theme.textMuted,
+        cursor: 'pointer',
+        padding: '0 12px',
+        fontSize: '14px',
+      }}
+    >
       {show ? '🙈' : '👁️'}
     </button>
   );
 
   return (
-    <Modal title="Change password" subtitle="Update your login credentials" onClose={onClose}>
+    <Modal
+      title="Change password"
+      subtitle="Update your login credentials"
+      onClose={onClose}
+    >
       <div style={{ padding: '18px 20px' }}>
 
         {/* Current */}
         <div style={{ marginBottom: '12px' }}>
-          <div style={{ color: '#3a8090', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '6px' }}>Current password</div>
+          <div
+            style={{
+              color: theme.accent,
+              fontSize: '10px',
+              textTransform: 'uppercase',
+              letterSpacing: '.06em',
+              marginBottom: '6px',
+            }}
+          >
+            Current password
+          </div>
+
           <div style={passWrap(false)}>
-            <input type={showCur ? 'text' : 'password'} value={current} onChange={e => setCurrent(e.target.value)} placeholder="••••••••" style={inputStyle} />
-            {eyeBtn(() => setShowCur(p => !p), showCur)}
+            <input
+              type={showCur ? 'text' : 'password'}
+              value={current}
+              onChange={(e) => setCurrent(e.target.value)}
+              placeholder="••••••••"
+              style={inputStyle}
+            />
+
+            {eyeBtn(
+              () => setShowCur((p) => !p),
+              showCur
+            )}
           </div>
         </div>
 
         {/* New */}
         <div style={{ marginBottom: '12px' }}>
-          <div style={{ color: '#3a8090', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '6px' }}>New password</div>
-          <div style={passWrap(false)}>
-            <input type={showNew ? 'text' : 'password'} value={newPass} onChange={e => setNewPass(e.target.value)} placeholder="••••••••" style={inputStyle} />
-            {eyeBtn(() => setShowNew(p => !p), showNew)}
+          <div
+            style={{
+              color: theme.accent,
+              fontSize: '10px',
+              textTransform: 'uppercase',
+              letterSpacing: '.06em',
+              marginBottom: '6px',
+            }}
+          >
+            New password
           </div>
+
+          <div style={passWrap(false)}>
+            <input
+              type={showNew ? 'text' : 'password'}
+              value={newPass}
+              onChange={(e) => setNewPass(e.target.value)}
+              placeholder="••••••••"
+              style={inputStyle}
+            />
+
+            {eyeBtn(
+              () => setShowNew((p) => !p),
+              showNew
+            )}
+          </div>
+
           {strength && (
             <div style={{ marginTop: '6px' }}>
-              <div style={{ height: '3px', borderRadius: '2px', background: '#0d2030', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: strength.pct, background: strength.color, transition: 'width .3s, background .3s' }} />
+              <div
+                style={{
+                  height: '3px',
+                  borderRadius: '2px',
+                  background: theme.border,
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  style={{
+                    height: '100%',
+                    width: strength.pct,
+                    background: strength.color,
+                    transition:
+                      'width .3s, background .3s',
+                  }}
+                />
               </div>
-              <div style={{ color: strength.color, fontSize: '10px', marginTop: '3px' }}>{strength.label}</div>
+
+              <div
+                style={{
+                  color: strength.color,
+                  fontSize: '10px',
+                  marginTop: '3px',
+                }}
+              >
+                {strength.label}
+              </div>
             </div>
           )}
         </div>
 
         {/* Confirm */}
         <div style={{ marginBottom: '4px' }}>
-          <div style={{ color: '#3a8090', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '6px' }}>Confirm new password</div>
-          <div style={passWrap(confirm && confirm !== newPass)}>
-            <input type={showCon ? 'text' : 'password'} value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="••••••••" style={inputStyle} />
-            {eyeBtn(() => setShowCon(p => !p), showCon)}
+          <div
+            style={{
+              color: theme.accent,
+              fontSize: '10px',
+              textTransform: 'uppercase',
+              letterSpacing: '.06em',
+              marginBottom: '6px',
+            }}
+          >
+            Confirm new password
           </div>
+
+          <div
+            style={passWrap(
+              confirm && confirm !== newPass
+            )}
+          >
+            <input
+              type={showCon ? 'text' : 'password'}
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              placeholder="••••••••"
+              style={inputStyle}
+            />
+
+            {eyeBtn(
+              () => setShowCon((p) => !p),
+              showCon
+            )}
+          </div>
+
           {confirm && confirm !== newPass && (
-            <div style={{ color: '#ff6b6b', fontSize: '10px', marginTop: '4px' }}>Passwords don't match</div>
+            <div
+              style={{
+                color: theme.danger,
+                fontSize: '10px',
+                marginTop: '4px',
+              }}
+            >
+              Passwords don&apos;t match
+            </div>
           )}
         </div>
 
-        {error && <div style={{ color: '#ff6b6b', fontSize: '12px', marginTop: '10px', padding: '8px 12px', background: 'rgba(255,107,107,.08)', border: '1px solid rgba(255,107,107,.15)', borderRadius: '8px' }}>{error}</div>}
+        {/* Error */}
+        {error && (
+          <div
+            style={{
+              color: theme.danger,
+              fontSize: '12px',
+              marginTop: '10px',
+              padding: '8px 12px',
+              background: 'rgba(255,107,107,.08)',
+              border: '1px solid rgba(255,107,107,.15)',
+              borderRadius: '8px',
+            }}
+          >
+            {error}
+          </div>
+        )}
 
-        <div style={{ display: 'flex', gap: '10px', marginTop: '18px' }}>
-          <button onClick={onClose} style={{ flex: 1, padding: '10px', borderRadius: '10px', border: '1px solid #0d2030', background: 'transparent', color: '#3a5060', fontSize: '13px', cursor: 'pointer' }}>Cancel</button>
-          <button onClick={handleSave} disabled={saving} style={{ flex: 2, padding: '10px', borderRadius: '10px', border: `1px solid ${saved ? 'rgba(74,222,128,.35)' : 'rgba(0,229,255,.35)'}`, background: saved ? 'rgba(74,222,128,.1)' : 'rgba(0,229,255,.1)', color: saved ? '#4ade80' : '#00e5ff', fontSize: '13px', fontWeight: 600, cursor: 'pointer', transition: 'all .2s', opacity: saving ? 0.7 : 1 }}>
-            {saving ? 'Saving…' : saved ? '✓ Updated' : 'Update password'}
+        {/* Buttons */}
+        <div
+          style={{
+            display: 'flex',
+            gap: '10px',
+            marginTop: '18px',
+          }}
+        >
+          <button
+            onClick={onClose}
+            style={{
+              flex: 1,
+              padding: '10px',
+              borderRadius: '10px',
+              border: `1px solid ${theme.border}`,
+              background: 'transparent',
+              color: theme.textMuted,
+              fontSize: '13px',
+              cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            style={{
+              flex: 2,
+              padding: '10px',
+              borderRadius: '10px',
+              border: `1px solid ${
+                saved
+                  ? 'rgba(74,222,128,.35)'
+                  : theme.accentBorder
+              }`,
+              background: saved
+                ? 'rgba(74,222,128,.1)'
+                : theme.accentBg,
+              color: saved
+                ? '#4ade80'
+                : theme.accent,
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all .2s',
+              opacity: saving ? 0.7 : 1,
+            }}
+          >
+            {saving
+              ? 'Saving…'
+              : saved
+              ? '✓ Updated'
+              : 'Update password'}
           </button>
         </div>
       </div>
@@ -257,71 +772,351 @@ function ChangePasswordModal({ onClose }) {
   );
 }
 
-// ── SIDEBAR ──────────────────────────────────────────────────────
+/* ─────────────────────────────────────────────────────────────
+   SIDEBAR
+───────────────────────────────────────────────────────────── */
+
 export default function Sidebar() {
-  const path   = usePathname();
+  const { theme } = useTheme();
+
+  const path = usePathname();
   const router = useRouter();
-  const [menuOpen,        setMenuOpen]        = useState(false);
-  const [showEditModal,   setShowEditModal]    = useState(false);
-  const [showPassModal,   setShowPassModal]    = useState(false);
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showPassModal, setShowPassModal] = useState(false);
+  const [userCount, setUserCount] = useState(0);
+  const [flaggedCount, setFlaggedCount] = useState(0);
+  const [account, setAccount] = useState({ name: '', email: '', role: 'User', nameUpdatedAt: null });
+
+  useEffect(() => {
+    if (!auth) return undefined;
+    return onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        setAccount({ name: '', email: '', role: 'User', nameUpdatedAt: null });
+        return;
+      }
+
+      let role = 'User';
+      let nameUpdatedAt = null;
+      if (db) {
+        const adminDocument = await getDoc(doc(db, 'admins', user.uid));
+        if (adminDocument.exists()) {
+          role = adminDocument.data()?.role || 'admin';
+          nameUpdatedAt = adminDocument.data()?.nameUpdatedAt || null;
+        }
+      }
+      setAccount({ name: user.displayName || '', email: user.email || '', role, nameUpdatedAt });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!db) return undefined;
+    return onSnapshot(collection(db, 'users'), (snapshot) => {
+      setUserCount(snapshot.size);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!db) return undefined;
+    return onSnapshot(collection(db, 'flagged'), (snapshot) => {
+      setFlaggedCount(snapshot.size);
+    });
+  }, []);
 
   const adminMenuOptions = [
-    { label: 'Edit profile',    action: () => { setMenuOpen(false); setShowEditModal(true); } },
-    { label: 'Change password', action: () => { setMenuOpen(false); setShowPassModal(true); } },
-    { label: 'Sign out',        action: () => router.replace('/login'), danger: true          },
+    {
+      label: 'Edit profile',
+      action: () => {
+        setMenuOpen(false);
+        setShowEditModal(true);
+      },
+    },
+    {
+      label: 'Change password',
+      action: () => {
+        setMenuOpen(false);
+        setShowPassModal(true);
+      },
+    },
+    {
+      label: 'Sign out',
+      action: async () => {
+        setMenuOpen(false);
+        if (auth) await signOut(auth);
+        router.replace('/login');
+      },
+      danger: true,
+    },
   ];
 
   return (
     <>
+      {/* Click outside */}
       {menuOpen && (
-        <div onClick={() => setMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+        <div
+          onClick={() => setMenuOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 40,
+          }}
+        />
       )}
 
-      {showEditModal && <EditProfileModal   onClose={() => setShowEditModal(false)} />}
-      {showPassModal && <ChangePasswordModal onClose={() => setShowPassModal(false)} />}
+      {/* Modals */}
+      {showEditModal && (
+        <EditProfileModal
+          account={account}
+          onUpdated={(updatedAccount) => setAccount((current) => ({ ...current, ...updatedAccount }))}
+          onClose={() => setShowEditModal(false)}
+        />
+      )}
 
+      {showPassModal && (
+        <ChangePasswordModal
+          onClose={() => setShowPassModal(false)}
+        />
+      )}
+
+      {/* SIDEBAR */}
       <aside
         style={{
-          width: '260px', height: '100vh',
-          position: 'relative', zIndex: 45,
-          top: 0, display: 'flex', flexDirection: 'column',
-          background: 'linear-gradient(180deg, #0b141c 0%, #071018 100%)',
-          borderRight: '1px solid rgba(255,255,255,.05)',
-          overflow: 'visible', backdropFilter: 'blur(12px)',
+          width: '260px',
+          height: '100vh',
+          position: 'relative',
+          zIndex: 45,
+          top: 0,
+          display: 'flex',
+          flexDirection: 'column',
+
+          background:
+            theme.mode === 'dark'
+              ? 'linear-gradient(180deg, #0b141c 0%, #071018 100%)'
+              : 'linear-gradient(180deg, #ffffff 0%, #f4f7f9 100%)',
+
+          borderRight: `1px solid ${theme.border}`,
+
+          overflow: 'visible',
+          backdropFilter: 'blur(12px)',
+          transition:
+            'background .2s, border-color .2s',
         }}
       >
+
         {/* LOGO */}
-        <div style={{ padding: '24px 20px', borderBottom: '1px solid rgba(255,255,255,.05)', display: 'flex', alignItems: 'center', gap: '14px', flexShrink: 0 }}>
-          <div style={{ width: '44px', height: '44px', borderRadius: '14px', background: 'linear-gradient(135deg, rgba(0,229,255,.18), rgba(0,229,255,.05))', border: '1px solid rgba(0,229,255,.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 24px rgba(0,229,255,.12)', overflow: 'hidden' }}>
-            <Image src="/Hololingo_logo.png" alt="Hololingo Logo" width={26} height={26} style={{ objectFit: 'contain' }} />
+        <div
+          style={{
+            padding: '24px 20px',
+            borderBottom: `1px solid ${theme.border}`,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '14px',
+            flexShrink: 0,
+          }}
+        >
+          <div
+            style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: '14px',
+              background: theme.accentBg,
+              border: `1px solid ${theme.accentBorder}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow:
+                theme.mode === 'dark'
+                  ? '0 0 24px rgba(0,229,255,.12)'
+                  : '0 4px 14px rgba(0,144,168,.08)',
+              overflow: 'hidden',
+            }}
+          >
+            <Image
+              src="/Hololingo_logo.png"
+              alt="Hololingo Logo"
+              width={26}
+              height={26}
+              style={{ objectFit: 'contain' }}
+            />
           </div>
+
           <div>
-            <div style={{ color: 'var(--adm-text)', fontSize: '16px', fontWeight: 700, letterSpacing: '-0.03em' }}>Hololingo</div>
-            <div style={{ color: 'var(--adm-text3)', fontSize: '11px', marginTop: '3px' }}>Admin panel</div>
+            <div
+              style={{
+                color: theme.textStrong,
+                fontSize: '16px',
+                fontWeight: 700,
+                letterSpacing: '-0.03em',
+              }}
+            >
+              Hololingo
+            </div>
+
+            <div
+              style={{
+                color: theme.textMuted,
+                fontSize: '11px',
+                marginTop: '3px',
+              }}
+            >
+              Admin panel
+            </div>
           </div>
         </div>
 
         {/* NAVIGATION */}
-        <div style={{ flex: 1, padding: '18px 14px', overflowY: 'auto' }}>
+        <div
+          style={{
+            flex: 1,
+            padding: '18px 14px',
+            overflowY: 'auto',
+          }}
+        >
           {navItems.map((sec) => (
-            <div key={sec.section} style={{ marginBottom: '28px' }}>
-              <div style={{ color: '#4c6374', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.14em', padding: '0 10px', marginBottom: '10px', fontWeight: 700 }}>
+            <div
+              key={sec.section}
+              style={{ marginBottom: '28px' }}
+            >
+              <div
+                style={{
+                  color: theme.textMuted,
+                  fontSize: '10px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '.14em',
+                  padding: '0 10px',
+                  marginBottom: '10px',
+                  fontWeight: 700,
+                }}
+              >
                 {sec.section}
               </div>
+
               {sec.items.map((item) => {
                 const active = path.startsWith(item.href);
+
                 return (
-                  <Link key={item.href} href={item.href} style={{ textDecoration: 'none' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '11px 12px', borderRadius: '14px', marginBottom: '5px', background: active ? 'linear-gradient(135deg, rgba(0,229,255,.12), rgba(0,229,255,.04))' : 'transparent', border: active ? '1px solid rgba(0,229,255,.18)' : '1px solid transparent', transition: '.2s ease', cursor: 'pointer', boxShadow: active ? '0 0 20px rgba(0,229,255,.08)' : 'none' }}>
-                      <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: active ? 'rgba(0,229,255,.12)' : 'rgba(255,255,255,.03)', border: active ? '1px solid rgba(0,229,255,.15)' : '1px solid rgba(255,255,255,.03)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden', color: active ? 'var(--adm-cyan)' : 'var(--adm-text3)', fontSize: '16px' }}>
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    style={{
+                      textDecoration: 'none',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        padding: '11px 12px',
+                        borderRadius: '14px',
+                        marginBottom: '5px',
+
+                        background: active
+                          ? theme.accentBg
+                          : 'transparent',
+
+                        border: active
+                          ? `1px solid ${theme.accentBorder}`
+                          : '1px solid transparent',
+
+                        transition: '.2s ease',
+                        cursor: 'pointer',
+
+                        boxShadow:
+                          active && theme.mode === 'dark'
+                            ? '0 0 20px rgba(0,229,255,.08)'
+                            : 'none',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: '38px',
+                          height: '38px',
+                          borderRadius: '12px',
+
+                          background: active
+                            ? theme.accentBg
+                            : theme.mode === 'dark'
+                            ? 'rgba(255,255,255,.03)'
+                            : 'rgba(0,0,0,.035)',
+
+                          border: active
+                            ? `1px solid ${theme.accentBorder}`
+                            : `1px solid ${theme.border}`,
+
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                          overflow: 'hidden',
+
+                          color: active
+                            ? theme.accent
+                            : theme.textMuted,
+
+                          fontSize: item.icon.length > 1 ? '9px' : '16px',
+                          letterSpacing: item.icon.length > 1 ? '-1px' : 'normal',
+                        }}
+                      >
                         {item.icon === 'robot' ? (
-                          <Image src="/robot 1.png" alt="Robot" width={20} height={20} style={{ objectFit: 'contain' }} />
-                        ) : item.icon}
+                          <Image
+                            src="/robot 1.png"
+                            alt="Robot"
+                            width={20}
+                            height={20}
+                            style={{
+                              objectFit: 'contain',
+                            }}
+                          />
+                        ) : (
+                          item.icon
+                        )}
                       </div>
-                      <span style={{ flex: 1, color: active ? 'var(--adm-cyan)' : 'var(--adm-text2)', fontSize: '13px', fontWeight: active ? 600 : 500 }}>{item.label}</span>
-                      {item.badge && (
-                        <span style={{ background: item.badgeStyle === 'alert' ? 'rgba(255,107,107,.14)' : 'rgba(0,229,255,.10)', color: item.badgeStyle === 'alert' ? '#ff7b7b' : 'var(--adm-cyan)', border: item.badgeStyle === 'alert' ? '1px solid rgba(255,107,107,.18)' : '1px solid rgba(0,229,255,.18)', borderRadius: '999px', padding: '4px 8px', fontSize: '10px', fontWeight: 700 }}>
-                          {item.badge}
+
+                      <span
+                        style={{
+                          flex: 1,
+                          color: active
+                            ? theme.accent
+                            : theme.text,
+
+                          fontSize: '13px',
+                          fontWeight: active ? 600 : 500,
+                        }}
+                      >
+                        {item.label}
+                      </span>
+
+                      {(item.badge || item.href === '/admin/users' || (item.href === '/admin/flagged' && flaggedCount > 0)) && (
+                        <span
+                          style={{
+                            background:
+                              item.badgeStyle === 'alert'
+                                ? 'rgba(255,107,107,.14)'
+                                : theme.accentBg,
+
+                            color:
+                              item.badgeStyle === 'alert'
+                                ? '#ff7b7b'
+                                : theme.accent,
+
+                            border:
+                              item.badgeStyle === 'alert'
+                                ? '1px solid rgba(255,107,107,.18)'
+                                : `1px solid ${theme.accentBorder}`,
+
+                            borderRadius: '999px',
+                            padding: '4px 8px',
+                            fontSize: '10px',
+                            fontWeight: 700,
+                          }}
+                        >
+                          {item.href === '/admin/users'
+                            ? userCount.toLocaleString()
+                            : item.href === '/admin/flagged'
+                              ? flaggedCount.toLocaleString()
+                              : item.badge}
                         </span>
                       )}
                     </div>
@@ -333,22 +1128,92 @@ export default function Sidebar() {
         </div>
 
         {/* FOOTER */}
-        <div style={{ padding: '16px', borderTop: '1px solid rgba(255,255,255,.05)', position: 'relative', flexShrink: 0, zIndex: 50 }}>
+        <div
+          style={{
+            padding: '16px',
+            borderTop: `1px solid ${theme.border}`,
+            position: 'relative',
+            flexShrink: 0,
+            zIndex: 50,
+          }}
+        >
+
+          {/* ACCOUNT MENU */}
           {menuOpen && (
             <div
-              onClick={e => e.stopPropagation()}
-              style={{ position: 'absolute', bottom: 'calc(100% - 8px)', left: '16px', right: '16px', background: 'linear-gradient(180deg, #0d1e2a 0%, #071018 100%)', border: '1px solid rgba(0,229,255,.14)', borderRadius: '16px', overflow: 'visible', zIndex: 999, boxShadow: '0 -12px 40px rgba(0,0,0,.6)' }}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: 'absolute',
+                bottom: 'calc(100% - 8px)',
+                left: '16px',
+                right: '16px',
+
+                background: theme.bgCard,
+                border: `1px solid ${theme.accentBorder}`,
+
+                borderRadius: '16px',
+                overflow: 'visible',
+                zIndex: 999,
+
+                boxShadow:
+                  theme.mode === 'dark'
+                    ? '0 -12px 40px rgba(0,0,0,.6)'
+                    : '0 -8px 30px rgba(0,0,0,.12)',
+              }}
             >
-              <div style={{ color: '#4c6374', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.14em', padding: '12px 14px 6px', fontWeight: 700 }}>Account</div>
+              <div
+                style={{
+                  color: theme.textMuted,
+                  fontSize: '10px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '.14em',
+                  padding: '12px 14px 6px',
+                  fontWeight: 700,
+                }}
+              >
+                Account
+              </div>
+
               {adminMenuOptions.map((opt, i) => (
                 <div
                   key={i}
-                  onClick={e => { e.stopPropagation(); opt.action(); }}
-                  style={{ display: 'flex', alignItems: 'center', padding: '10px 14px', borderTop: i === adminMenuOptions.length - 1 ? '1px solid rgba(255,255,255,.05)' : 'none', cursor: 'pointer', transition: 'background .15s' }}
-                  onMouseEnter={e => e.currentTarget.style.background = opt.danger ? 'rgba(255,107,107,.06)' : 'rgba(255,255,255,.03)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    opt.action();
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '10px 14px',
+                    borderTop:
+                      i === adminMenuOptions.length - 1
+                        ? `1px solid ${theme.border}`
+                        : 'none',
+                    cursor: 'pointer',
+                    transition: 'background .15s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background =
+                      opt.danger
+                        ? 'rgba(255,107,107,.06)'
+                        : theme.accentBg;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background =
+                      'transparent';
+                  }}
                 >
-                  <span style={{ fontSize: '13px', fontWeight: 500, color: opt.danger ? '#ff6b6b' : 'var(--adm-text2)' }}>{opt.label}</span>
+                  <span
+                    style={{
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      color: opt.danger
+                        ? theme.danger
+                        : theme.text,
+                    }}
+                  >
+                    {opt.label}
+                  </span>
                 </div>
               ))}
             </div>
@@ -356,17 +1221,102 @@ export default function Sidebar() {
 
           {/* ADMIN CARD */}
           <div
-            onClick={() => setMenuOpen(o => !o)}
-            style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px', background: menuOpen ? 'linear-gradient(135deg, rgba(0,229,255,.10), rgba(0,229,255,.03))' : 'rgba(255,255,255,.03)', borderRadius: '16px', border: menuOpen ? '1px solid rgba(0,229,255,.22)' : '1px solid rgba(255,255,255,.04)', cursor: 'pointer', transition: 'all .2s ease', userSelect: 'none' }}
+            onClick={() =>
+              setMenuOpen((o) => !o)
+            }
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              padding: '12px',
+
+              background: menuOpen
+                ? theme.accentBg
+                : theme.mode === 'dark'
+                ? 'rgba(255,255,255,.03)'
+                : 'rgba(0,0,0,.035)',
+
+              borderRadius: '16px',
+
+              border: menuOpen
+                ? `1px solid ${theme.accentBorder}`
+                : `1px solid ${theme.border}`,
+
+              cursor: 'pointer',
+              transition: 'all .2s ease',
+              userSelect: 'none',
+            }}
           >
-            <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'linear-gradient(135deg, rgba(0,229,255,.18), rgba(0,229,255,.05))', border: '1px solid rgba(0,229,255,.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--adm-cyan)', fontSize: '13px', fontWeight: 700 }}>A</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ color: 'var(--adm-text2)', fontSize: '13px', fontWeight: 600 }}>Admin</div>
-              <div style={{ color: 'var(--adm-text4)', fontSize: '10px', marginTop: '2px' }}>Super admin</div>
+            <div
+              style={{
+                width: '40px',
+                height: '40px',
+                borderRadius: '50%',
+                background: theme.accentBg,
+                border: `1px solid ${theme.accentBorder}`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: theme.accent,
+                fontSize: '13px',
+                fontWeight: 700,
+              }}
+            >
+              {(account.name || account.email || 'A').charAt(0).toUpperCase()}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 10px #4ade80' }} />
-              <span style={{ color: '#4c6374', fontSize: '10px', display: 'inline-block', transform: menuOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform .2s' }}>▲</span>
+
+            <div style={{ flex: 1 }}>
+              <div
+                style={{
+                  color: theme.text,
+                  fontSize: '13px',
+                  fontWeight: 600,
+                }}
+              >
+                {account.name || account.email || 'Admin'}
+              </div>
+
+              <div
+                style={{
+                  color: theme.textMuted,
+                  fontSize: '10px',
+                  marginTop: '2px',
+                }}
+              >
+                {account.role}
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+              }}
+            >
+              <div
+                style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  background: '#4ade80',
+                  boxShadow: '0 0 10px #4ade80',
+                }}
+              />
+
+              <span
+                style={{
+                  color: theme.textMuted,
+                  fontSize: '10px',
+                  display: 'inline-block',
+                  transform: menuOpen
+                    ? 'rotate(180deg)'
+                    : 'rotate(0deg)',
+                  transition: 'transform .2s',
+                }}
+              >
+                ▲
+              </span>
             </div>
           </div>
         </div>

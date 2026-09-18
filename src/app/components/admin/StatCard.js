@@ -1,3 +1,7 @@
+'use client';
+
+import { useTheme } from '../../ThemeContext';
+
 export default function StatCard({
   icon,
   num,
@@ -6,19 +10,25 @@ export default function StatCard({
   deltaUp,
   color,
 }) {
+  const { theme } = useTheme();
+
   return (
     <div
       style={{
         background:
-          'linear-gradient(180deg, rgba(17,29,38,.95), rgba(10,18,24,.95))',
-        border: '1px solid rgba(255,255,255,0.05)',
+          theme.mode === 'dark'
+            ? 'linear-gradient(180deg, rgba(17,29,38,.95), rgba(10,18,24,.95))'
+            : 'linear-gradient(180deg, #ffffff, #f4f7f9)',
+        border: `1px solid ${theme.border}`,
         borderRadius: '22px',
         padding: '20px',
         position: 'relative',
         overflow: 'hidden',
         backdropFilter: 'blur(10px)',
         boxShadow:
-          '0 0 0 1px rgba(255,255,255,.02), 0 10px 30px rgba(0,0,0,.35)',
+          theme.mode === 'dark'
+            ? '0 0 0 1px rgba(255,255,255,.02), 0 10px 30px rgba(0,0,0,.35)'
+            : '0 4px 18px rgba(0,0,0,.06)',
         transition: '0.25s ease',
       }}
     >
@@ -59,7 +69,7 @@ export default function StatCard({
       {/* number */}
       <div
         style={{
-          color: '#ffffff',
+          color: theme.textStrong,
           fontSize: '30px',
           fontWeight: 700,
           lineHeight: 1,
@@ -72,7 +82,7 @@ export default function StatCard({
       {/* label */}
       <div
         style={{
-          color: 'var(--adm-text3)',
+          color: theme.textMuted,
           fontSize: '13px',
           marginTop: '8px',
           fontWeight: 500,
@@ -100,8 +110,8 @@ export default function StatCard({
               ? '1px solid rgba(74,222,128,.18)'
               : '1px solid rgba(255,107,107,.18)',
             color: deltaUp
-              ? 'var(--adm-green)'
-              : 'var(--adm-red)',
+              ? '#4ade80'
+              : theme.danger,
           }}
         >
           {deltaUp ? '▲' : '▼'} {delta}

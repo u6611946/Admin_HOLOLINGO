@@ -1,42 +1,212 @@
-const msgs = [
-  { initial:'N', color:'#00e5ff', bg:'rgba(0,229,255,.12)',   name:'Nattaya K.', msg:'"Pronunciation feature doesn\'t work for Japanese on my phone"', date:'Today' },
-  { initial:'S', color:'#a78bfa', bg:'rgba(167,139,250,.12)', name:'Somchai P.', msg:'"Can you add Chinese and Spanish language support?"',             date:'Yesterday' },
-  { initial:'M', color:'#4ade80', bg:'rgba(74,222,128,.12)',  name:'Malee T.',   msg:'"Gobot AI is so helpful! Love the save word from chat feature"',   date:'2 days ago' },
-  { initial:'P', color:'#ffc800', bg:'rgba(255,200,0,.12)',   name:'Praew S.',   msg:'"The AR scanner sometimes misidentifies objects in low light"',     date:'3 days ago' },
-];
-const cols = '1.5fr 2.5fr 1fr 1fr';
+'use client';
+
+import { useEffect, useState } from 'react';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '../../../lib/firebase';
+import { useTheme } from '../../ThemeContext';
+
+const cols = '1.5fr 2.5fr 1fr';
+
+function formatFeedbackDate(value) {
+  if (!value) return '—';
+
+  if (typeof value === 'string') {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toLocaleDateString('th-TH');
+    return value;
+  }
+
+  if (typeof value?.toDate === 'function') {
+    return value.toDate().toLocaleDateString('th-TH');
+  }
+
+  if (typeof value?.seconds === 'number') {
+    return new Date(value.seconds * 1000).toLocaleDateString('th-TH');
+  }
+
+  return String(value);
+}
 
 export default function FeedbackPage() {
+  const { theme } = useTheme();
+  const [feedback, setFeedback] = useState([]);
+
+  useEffect(() => {
+    if (!db) {
+      return undefined;
+    }
+
+    const unsubscribe = onSnapshot(collection(db, 'feedback'), (snapshot) => {
+      const docs = snapshot.docs.map((document) => {
+        const data = document.data();
+        return {
+          id: document.id,
+          user: data.name || data.user || data.userName || data.displayName || 'ผู้ใช้',
+          message: data.message || data.body || data.comment || data.text || data.thaiMessage || 'ไม่มีข้อความ',
+          date: formatFeedbackDate(data.createdAt || data.created || data.date || data.timestamp),
+        };
+      });
+
+      setFeedback(docs);
+    });
+
+    return unsubscribe;
+  }, []);
+
   return (
-    <div style={{padding:'24px'}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'20px'}}>
+    <div
+      style={{
+        padding: '24px',
+        background: theme.bgPage,
+        minHeight: '100vh',
+        color: theme.text,
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          marginBottom: '20px',
+        }}
+      >
         <div>
-          <div style={{color:'#fff',fontSize:'18px',fontWeight:700}}>Feedback</div>
-          <div style={{color:'#3a5060',fontSize:'11px',marginTop:'2px'}}>12 unread · 48 total this month</div>
+          <div
+            style={{
+              color: theme.textStrong,
+              fontSize: '18px',
+              fontWeight: 700,
+            }}
+          >
+            Feedback
+          </div>
+
+          <div
+            style={{
+              color: theme.textMuted,
+              fontSize: '11px',
+              marginTop: '2px',
+            }}
+          >
+            {feedback.length} items from live data
+          </div>
         </div>
-        <button style={{background:'#0d1a22',border:'1px solid #1a2d3a',borderRadius:'9px',padding:'8px 14px',color:'#6b8a9a',fontSize:'12px',cursor:'pointer',fontFamily:'inherit'}}>Mark all read</button>
       </div>
 
-      <div style={{background:'#0d1a22',border:'1px solid #0d2030',borderRadius:'14px',overflow:'hidden'}}>
-        <div style={{display:'grid',gridTemplateColumns:cols,gap:'8px',padding:'10px 16px',background:'#0a1218'}}>
-          {['User','Message','Date','Actions'].map(h=>(
-            <div key={h} style={{color:'#1e3040',fontSize:'9px',textTransform:'uppercase',letterSpacing:'.07em'}}>{h}</div>
+      <div
+        style={{
+          background: theme.bgCard,
+          border: `1px solid ${theme.border}`,
+          borderRadius: '14px',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: cols,
+            gap: '8px',
+            padding: '10px 16px',
+            background: theme.bgInput,
+          }}
+        >
+          {['User', 'Message', 'Date'].map((h) => (
+            <div
+              key={h}
+              style={{
+                color: theme.textMuted,
+                fontSize: '9px',
+                textTransform: 'uppercase',
+                letterSpacing: '.07em',
+                fontWeight: 600,
+              }}
+            >
+              {h}
+            </div>
           ))}
         </div>
-        {msgs.map((m,i)=>(
-          <div key={m.name} style={{display:'grid',gridTemplateColumns:cols,gap:'8px',padding:'12px 16px',borderTop:'1px solid #0d2030',alignItems:'center',background:i%2===1?'#0a1218':'transparent'}}>
-            <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
-              <div style={{width:'26px',height:'26px',borderRadius:'50%',background:m.bg,color:m.color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'10px',fontWeight:700,flexShrink:0}}>{m.initial}</div>
-              <div style={{color:'#ccc',fontSize:'12px'}}>{m.name}</div>
-            </div>
-            <div style={{color:'#ccc',fontSize:'12px'}}>{m.msg}</div>
-            <div style={{color:'#ccc',fontSize:'12px'}}>{m.date}</div>
-            <div style={{display:'flex',gap:'4px'}}>
-              <button style={{background:'#111d26',border:'1px solid #1a2d3a',borderRadius:'6px',padding:'3px 8px',color:'#6b8a9a',fontSize:'10px',cursor:'pointer'}}>Reply</button>
-              <button style={{background:'#111d26',border:'1px solid rgba(255,76,76,.3)',borderRadius:'6px',padding:'3px 8px',color:'#ff6b6b',fontSize:'10px',cursor:'pointer'}}>Dismiss</button>
-            </div>
+
+        {feedback.length === 0 ? (
+          <div
+            style={{
+              padding: '24px 16px',
+              color: theme.textMuted,
+              fontSize: '12px',
+              textAlign: 'center',
+            }}
+          >
+            No feedback yet in the database
           </div>
-        ))}
+        ) : (
+          feedback.map((item, index) => (
+            <div
+              key={item.id || `${item.user}-${index}`}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: cols,
+                gap: '8px',
+                padding: '12px 16px',
+                borderTop: `1px solid ${theme.border}`,
+                alignItems: 'center',
+                background: index % 2 === 1 ? theme.bgInput : 'transparent',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <div
+                  style={{
+                    width: '26px',
+                    height: '26px',
+                    borderRadius: '50%',
+                    background: 'rgba(0,229,255,.12)',
+                    color: theme.accent,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    flexShrink: 0,
+                  }}
+                >
+                  {(item.user || 'ผ').charAt(0).toUpperCase()}
+                </div>
+
+                <div
+                  style={{
+                    color: theme.text,
+                    fontSize: '12px',
+                  }}
+                >
+                  {item.user}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  color: theme.text,
+                  fontSize: '12px',
+                  lineHeight: 1.5,
+                }}
+              >
+                {item.message}
+              </div>
+
+              <div
+                style={{
+                  color: theme.textMuted,
+                  fontSize: '12px',
+                }}
+              >
+                {item.date}
+              </div>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );

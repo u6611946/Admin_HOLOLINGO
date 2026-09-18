@@ -2,6 +2,9 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { Eye, EyeOff } from 'lucide-react';
+import { auth } from '../../lib/firebase';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -12,19 +15,50 @@ export default function LoginPage() {
 
   const set = (key, val) => setForm(p => ({ ...p, [key]: val }));
 
+  const finishSignIn = async () => {
+    const token = await auth.currentUser.getIdToken();
+    const response = await fetch('/api/admin/claim-invite', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      await auth.signOut();
+      const notAuthorized = new Error(result.error || 'This account is not authorized as an admin.');
+      notAuthorized.code = 'not-authorized';
+      throw notAuthorized;
+    }
+    router.replace('/admin/dashboard');
+  };
+
   const handleLogin = async () => {
     if (!form.email.trim())    { setError('Email is required.');    return; }
     if (!form.password.trim()) { setError('Password is required.'); return; }
     setError('');
     setLoading(true);
-    await new Promise(r => setTimeout(r, 900)); // replace with real auth call
-
-    // Example check — replace with your real auth logic
-    if (form.email === 'admin@hololingo.app' && form.password === 'admin123') {
-      router.replace('/admin/dashboard');
-    } else {
+    if (!auth) {
+      setError('Firebase is not configured. Add the values from your Firebase web app to .env.local.');
       setLoading(false);
-      setError('Invalid email or password.');
+      return;
+    }
+
+    try {
+      await signInWithEmailAndPassword(auth, form.email.trim(), form.password);
+      await finishSignIn();
+    } catch (authError) {
+      if (authError.code === 'not-authorized') {
+        setError(authError.message);
+      } else if (authError.code === 'auth/invalid-credential' || authError.code === 'auth/user-not-found' || authError.code === 'auth/wrong-password') {
+        setError('Invalid email or password.');
+      } else if (authError.code === 'auth/user-disabled') {
+        setError('This invite has expired. Ask a super admin to reset it.');
+      } else if (authError.code === 'auth/invalid-api-key') {
+        setError('Firebase is not configured. Add the values from your Firebase web app to .env.local.');
+      } else {
+        setError('Unable to sign in right now. Please try again.');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -156,10 +190,12 @@ export default function LoginPage() {
               }}
             />
             <button
+              type="button"
               onClick={() => setShowPass(p => !p)}
-              style={{ background: 'none', border: 'none', color: '#3a5060', cursor: 'pointer', padding: '0 14px', fontSize: '15px' }}
+              aria-label={showPass ? 'Hide password' : 'Show password'}
+              style={{ background: 'none', border: 'none', color: '#3a5060', cursor: 'pointer', padding: '0 14px', display: 'flex', alignItems: 'center' }}
             >
-              {showPass ? '🙈' : '👁️'}
+              {showPass ? <EyeOff size={16} strokeWidth={1.8} /> : <Eye size={16} strokeWidth={1.8} />}
             </button>
           </div>
         </div>

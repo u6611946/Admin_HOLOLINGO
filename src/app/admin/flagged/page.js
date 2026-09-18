@@ -1,72 +1,98 @@
+'use client';
+
 import Link from 'next/link';
-
-const critical = [
-  { title:'Wrong AR detection reported',    sub:'3 users flagged "bottle" labelled as "cup" — needs object model fix', action:'Fix in Word DB', href:'/admin/words' },
-  { title:'Incorrect Thai translation',     sub:'"Window" mapped to หน้าตา — should be หน้าต่าง', action:'Fix word', href:'/admin/words' },
-  { title:'Missing Japanese word',          sub:'"Refrigerator" has no JP translation — 8 users saw a blank label', action:'Add JP word', href:'/admin/words' },
-];
-
-const warnings = [
-  { title:'42 users inactive 30+ days', sub:'Last session over 30 days ago — at risk of churn', action:'Send re-engage push', href:'/admin/notifications' },
-  { title:'18 users with broken streaks', sub:'Streak hit 0 in the last 24h', action:'Send streak reminder', href:'/admin/notifications' },
-];
-
-const feedback = [
-  { initial:'N', color:'#00e5ff', bg:'rgba(0,229,255,.12)', name:'Nattaya K.', msg:'"Pronunciation feature doesn\'t work for Japanese on my phone"' },
-  { initial:'S', color:'#a78bfa', bg:'rgba(167,139,250,.12)', name:'Somchai P.', msg:'"Can you add Chinese and Spanish language support?"' },
-];
+import { useEffect, useState } from 'react';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '../../../lib/firebase';
+import { useTheme } from '../../ThemeContext';
 
 export default function FlaggedPage() {
+  const { theme } = useTheme();
+  const [issues, setIssues] = useState([]);
+  const [feedback, setFeedback] = useState([]);
+
+  useEffect(() => {
+    if (!db) {
+      return undefined;
+    }
+
+    const flaggedUnsub = onSnapshot(collection(db, 'flagged'), (snapshot) => {
+      const docs = snapshot.docs.map((document) => ({ id: document.id, ...document.data() }));
+      setIssues(docs);
+    });
+
+    const feedbackUnsub = onSnapshot(collection(db, 'feedback'), (snapshot) => {
+      const docs = snapshot.docs.map((document) => ({ id: document.id, ...document.data() }));
+      setFeedback(docs);
+    });
+
+    return () => {
+      flaggedUnsub();
+      feedbackUnsub();
+    };
+  }, []);
+
+  const sectionLabelStyle = {
+    color: theme.textMuted,
+    fontSize: '10px',
+    textTransform: 'uppercase',
+    letterSpacing: '.08em',
+    marginBottom: '8px',
+  };
+
   return (
-    <div style={{padding:'24px'}}>
-      <div style={{marginBottom:'20px'}}>
-        <div style={{color:'#ff6b6b',fontSize:'18px',fontWeight:700}}>Flagged items</div>
-        <div style={{color:'#3a5060',fontSize:'11px',marginTop:'2px'}}>3 critical issues · 42 inactive users need re-engagement</div>
+    <div style={{ padding: '24px', background: theme.bgPage, minHeight: '100vh', color: theme.text }}>
+      <div style={{ marginBottom: '20px' }}>
+        <div style={{ color: theme.danger, fontSize: '18px', fontWeight: 700 }}>Flagged items</div>
+        <div style={{ color: theme.textMuted, fontSize: '11px', marginTop: '2px' }}>
+          {issues.length} flagged issue{issues.length === 1 ? '' : 's'} from the live app
+        </div>
       </div>
 
-      {/* Critical */}
-      <div style={{color:'#3a5060',fontSize:'10px',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:'8px'}}>Critical — content errors</div>
-      {critical.map(f=>(
-        <div key={f.title} style={{background:'rgba(255,76,76,.06)',border:'1px solid rgba(255,76,76,.2)',borderRadius:'10px',padding:'12px 14px',marginBottom:'8px',display:'flex',justifyContent:'space-between',alignItems:'center',gap:'12px'}}>
-          <div style={{flex:1}}>
-            <div style={{color:'#ccc',fontSize:'12px',fontWeight:600}}>{f.title}</div>
-            <div style={{color:'#3a5060',fontSize:'10px',marginTop:'2px'}}>{f.sub}</div>
-          </div>
-          <div style={{display:'flex',gap:'6px',flexShrink:0}}>
-            <Link href={f.href} style={{background:'rgba(255,76,76,.15)',border:'1px solid rgba(255,76,76,.3)',borderRadius:'8px',padding:'5px 12px',color:'#ff6b6b',fontSize:'11px',textDecoration:'none'}}>{f.action}</Link>
-            <button style={{background:'#0d1a22',border:'1px solid #1a2d3a',borderRadius:'8px',padding:'5px 12px',color:'#6b8a9a',fontSize:'11px',cursor:'pointer',fontFamily:'inherit'}}>Dismiss</button>
-          </div>
-        </div>
-      ))}
+      <div style={sectionLabelStyle}>Critical — content errors</div>
 
-      {/* Warnings */}
-      <div style={{color:'#3a5060',fontSize:'10px',textTransform:'uppercase',letterSpacing:'.08em',margin:'18px 0 8px'}}>User engagement warnings</div>
-      {warnings.map(w=>(
-        <div key={w.title} style={{background:'rgba(255,200,0,.06)',border:'1px solid rgba(255,200,0,.2)',borderRadius:'10px',padding:'12px 14px',marginBottom:'8px',display:'flex',justifyContent:'space-between',alignItems:'center',gap:'12px'}}>
-          <div style={{flex:1}}>
-            <div style={{color:'#ffc800',fontSize:'12px',fontWeight:600}}>{w.title}</div>
-            <div style={{color:'#3a5060',fontSize:'10px',marginTop:'2px'}}>{w.sub}</div>
-          </div>
-          <Link href={w.href} style={{background:'#0d1a22',border:'1px solid #1a2d3a',borderRadius:'8px',padding:'5px 12px',color:'#6b8a9a',fontSize:'11px',textDecoration:'none',flexShrink:0}}>{w.action} ›</Link>
+      {issues.length === 0 ? (
+        <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '10px', padding: '16px', color: theme.textMuted }}>
+          No flagged issues yet.
         </div>
-      ))}
+      ) : (
+        issues.map((item) => (
+          <div key={item.id} style={{ background: theme.mode === 'light' ? 'rgba(217,72,72,.06)' : 'rgba(255,76,76,.06)', border: theme.mode === 'light' ? '1px solid rgba(217,72,72,.20)' : '1px solid rgba(255,76,76,.20)', borderRadius: '10px', padding: '12px 14px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ color: theme.text, fontSize: '12px', fontWeight: 600 }}>{item.title || item.label || 'Flagged item'}</div>
+              <div style={{ color: theme.textMuted, fontSize: '10px', marginTop: '2px' }}>{item.description || item.message || item.sub || 'No description provided.'}</div>
+            </div>
 
-      {/* Feedback */}
-      <div style={{color:'#3a5060',fontSize:'10px',textTransform:'uppercase',letterSpacing:'.08em',margin:'18px 0 8px'}}>User feedback (unread)</div>
-      <div style={{background:'#0d1a22',border:'1px solid #0d2030',borderRadius:'14px',overflow:'hidden'}}>
-        {feedback.map((f,i)=>(
-          <div key={f.name} style={{display:'flex',alignItems:'center',gap:'10px',padding:'12px 16px',borderBottom:i<feedback.length-1?'1px solid #0d2030':'none'}}>
-            <div style={{width:'26px',height:'26px',borderRadius:'50%',background:f.bg,color:f.color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'10px',fontWeight:700,flexShrink:0}}>{f.initial}</div>
-            <div style={{flex:1}}>
-              <div style={{color:'#ccc',fontSize:'12px',fontWeight:600}}>{f.name}</div>
-              <div style={{color:'#6b8a9a',fontSize:'11px',marginTop:'3px'}}>{f.msg}</div>
-            </div>
-            <div style={{display:'flex',gap:'5px',flexShrink:0}}>
-              <button style={{background:'#111d26',border:'1px solid #1a2d3a',borderRadius:'6px',padding:'3px 8px',color:'#6b8a9a',fontSize:'10px',cursor:'pointer'}}>Reply</button>
-              <button style={{background:'#111d26',border:'1px solid rgba(255,76,76,.3)',borderRadius:'6px',padding:'3px 8px',color:'#ff6b6b',fontSize:'10px',cursor:'pointer'}}>Dismiss</button>
-            </div>
+            <Link href="/admin/words" style={{ background: theme.mode === 'light' ? 'rgba(217,72,72,.10)' : 'rgba(255,76,76,.15)', border: theme.mode === 'light' ? '1px solid rgba(217,72,72,.25)' : '1px solid rgba(255,76,76,.30)', borderRadius: '8px', padding: '5px 12px', color: theme.danger, fontSize: '11px', textDecoration: 'none' }}>
+              Review
+            </Link>
           </div>
-        ))}
+        ))
+      )}
+
+      <div style={{ ...sectionLabelStyle, margin: '18px 0 8px' }}>User feedback</div>
+
+      <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '14px', overflow: 'hidden' }}>
+        {feedback.length === 0 ? (
+          <div style={{ padding: '18px 16px', color: theme.textMuted, fontSize: '12px' }}>No user feedback yet.</div>
+        ) : (
+          feedback.map((item, index) => (
+            <div key={item.id || index} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', borderBottom: index < feedback.length - 1 ? `1px solid ${theme.border}` : 'none' }}>
+              <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'rgba(0,229,255,.12)', color: theme.accent, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, flexShrink: 0 }}>
+                {(item.name || item.user || 'U').charAt(0).toUpperCase()}
+              </div>
+
+              <div style={{ flex: 1 }}>
+                <div style={{ color: theme.text, fontSize: '12px', fontWeight: 600 }}>{item.name || item.user || 'User'}</div>
+                <div style={{ color: theme.textMuted, fontSize: '11px', marginTop: '3px' }}>{item.message || item.body || item.comment || 'No message provided.'}</div>
+              </div>
+
+              <Link href="/admin/feedback" style={{ background: theme.bgCard, border: `1px solid ${theme.borderStrong}`, borderRadius: '6px', padding: '3px 8px', color: theme.textMuted, fontSize: '10px', cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none' }}>
+                Reply
+              </Link>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );

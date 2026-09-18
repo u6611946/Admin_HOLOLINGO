@@ -1,14 +1,12 @@
 import './globals.css';
-
-export const metadata = {
-  title: 'Hololingo',
-  description: 'Hololingo Admin Panel',
-};
+import { ThemeProvider } from './ThemeContext'; // sits at src/app/ThemeContext.js
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <ThemeProvider>{children}</ThemeProvider>
+      </body>
     </html>
   );
 }

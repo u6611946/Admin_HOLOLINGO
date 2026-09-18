@@ -267,3 +267,12 @@ body {
     padding: 16px;
   }
 }
+/* Add this block to your existing globals.css (don't delete what's already there) */
+
+:root {
+  --adm-cyan: #00e5ff;
+  --adm-text: #ffffff;
+  --adm-text2: #cccccc;
+  --adm-text3: #3a5060;
+  --adm-text4: #4c6374;
+}
