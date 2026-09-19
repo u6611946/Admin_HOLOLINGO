@@ -18,8 +18,8 @@ export default function StatCard({
         background:
           theme.mode === 'dark'
             ? 'linear-gradient(180deg, rgba(17,29,38,.95), rgba(10,18,24,.95))'
-            : 'linear-gradient(180deg, #ffffff, #f4f7f9)',
-        border: `1px solid ${theme.border}`,
+            : `linear-gradient(180deg, ${color}38, ${color}12)`,
+        border: `1px solid ${theme.mode === 'light' ? `${color}70` : theme.border}`,
         borderRadius: '22px',
         padding: '20px',
         position: 'relative',
@@ -52,8 +52,8 @@ export default function StatCard({
           width: '52px',
           height: '52px',
           borderRadius: '16px',
-          background: `${color}15`,
-          border: `1px solid ${color}30`,
+          background: `${color}2a`,
+          border: `1px solid ${color}55`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',

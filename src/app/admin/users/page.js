@@ -97,6 +97,15 @@ export default function UsersPage() {
     });
   }, []);
 
+  // Close the row action menu on any click outside it — the menu itself stops the mousedown
+  // from bubbling here, so this only fires for clicks elsewhere on the page.
+  useEffect(() => {
+    if (openUserMenu === null) return undefined;
+    const closeMenu = () => setOpenUserMenu(null);
+    document.addEventListener('mousedown', closeMenu);
+    return () => document.removeEventListener('mousedown', closeMenu);
+  }, [openUserMenu]);
+
   const now = tick;
   const userList = useMemo(() => rawUsers.map((data) => {
     const name = data.name || data.displayName || data.email || 'Unnamed user';
@@ -281,17 +290,16 @@ export default function UsersPage() {
             <div style={{display:'flex',gap:'4px',alignItems:'center'}}>
               <button onClick={() => openUserModal(u)} style={{background:theme.bgInput,border:`1px solid ${theme.border}`,borderRadius:'6px',padding:'3px 8px',color:theme.textMuted,fontSize:'10px',cursor:'pointer'}}>View</button>
               {isModerator && (
-                <button
-                  onClick={() => toggleSuspend(u)}
-                  disabled={suspendingUserId === u.id}
-                  style={{background:theme.bgInput,border:`1px solid ${u.isSuspended ? theme.border : theme.dangerMuted}`,borderRadius:'6px',padding:'3px 8px',color:u.isSuspended ? theme.textMuted : theme.danger,fontSize:'10px',cursor:suspendingUserId === u.id ? 'wait' : 'pointer',opacity:suspendingUserId === u.id ? .5 : 1}}
-                >{suspendingUserId === u.id ? '…' : u.isSuspended ? 'Unsuspend' : 'Suspend'}</button>
-              )}
-              {isModerator && (
-                <div style={{position:'relative'}}>
+                <div style={{position:'relative'}} onMouseDown={(event) => event.stopPropagation()}>
                   <button type="button" onClick={() => setOpenUserMenu((current) => current === u.id ? null : u.id)} aria-label={`Actions for ${u.email}`} style={{background:theme.bgInput,border:`1px solid ${theme.border}`,borderRadius:'6px',padding:'2px 7px',color:theme.textMuted,fontSize:'15px',lineHeight:1,cursor:'pointer'}}>⋯</button>
                   {openUserMenu === u.id && (
-                    <div style={{position:'absolute',right:0,top:'calc(100% + 4px)',zIndex:20,minWidth:'92px',padding:'4px',background:theme.bgCard,border:`1px solid ${theme.border}`,borderRadius:'8px',boxShadow:'0 10px 24px rgba(0,0,0,.35)'}}>
+                    <div style={{position:'absolute',right:0,top:'calc(100% + 4px)',zIndex:20,minWidth:'110px',padding:'4px',background:theme.bgCard,border:`1px solid ${theme.border}`,borderRadius:'8px',boxShadow:'0 10px 24px rgba(0,0,0,.35)'}}>
+                      <button
+                        type="button"
+                        onClick={() => { setOpenUserMenu(null); toggleSuspend(u); }}
+                        disabled={suspendingUserId === u.id}
+                        style={{width:'100%',padding:'7px 9px',background:'transparent',border:'none',borderRadius:'5px',color:u.isSuspended ? theme.textMuted : theme.danger,textAlign:'left',fontSize:'11px',cursor:suspendingUserId === u.id ? 'wait' : 'pointer',opacity:suspendingUserId === u.id ? .5 : 1}}
+                      >{suspendingUserId === u.id ? '…' : u.isSuspended ? 'Unsuspend' : 'Suspend'}</button>
                       <button type="button" onClick={() => { setOpenUserMenu(null); handleDeleteUser(u); }} disabled={deletingUserId === u.id} style={{width:'100%',padding:'7px 9px',background:'transparent',border:'none',borderRadius:'5px',color:theme.danger,textAlign:'left',fontSize:'11px',cursor:deletingUserId === u.id ? 'wait' : 'pointer',opacity:deletingUserId === u.id ? .5 : 1}}>{deletingUserId === u.id ? 'Deleting…' : 'Delete'}</button>
                     </div>
                   )}

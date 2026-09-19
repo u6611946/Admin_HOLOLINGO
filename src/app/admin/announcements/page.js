@@ -305,7 +305,6 @@ export default function AnnouncementsPage() {
     <div
       style={{
         padding: '24px',
-        maxWidth: '800px',
         color: theme.text,
       }}
     >
@@ -369,6 +368,7 @@ export default function AnnouncementsPage() {
             borderRadius: '14px',
             padding: '18px',
             marginBottom: '20px',
+            maxWidth: '640px',
           }}
         >
           <div
@@ -539,8 +539,8 @@ export default function AnnouncementsPage() {
 
       <div
         style={{
-          display: 'flex',
-          flexDirection: 'column',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))',
           gap: '10px',
         }}
       >
@@ -554,6 +554,7 @@ export default function AnnouncementsPage() {
               color: theme.textMuted,
               fontSize: '12px',
               textAlign: 'center',
+              gridColumn: '1 / -1',
             }}
           >
             No announcements yet. Add one to start syncing with Firestore.
@@ -714,7 +715,7 @@ export default function AnnouncementsPage() {
       </div>
 
       {showEventForm && (
-        <div style={{ background: theme.bgCard, border: `1px solid ${theme.accentBorder}`, borderRadius: '14px', padding: '18px', marginBottom: '20px' }}>
+        <div style={{ background: theme.bgCard, border: `1px solid ${theme.accentBorder}`, borderRadius: '14px', padding: '18px', marginBottom: '20px', maxWidth: '640px' }}>
           <div style={{ color: theme.accent, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: '14px' }}>New event</div>
 
           <div style={{ marginBottom: '12px' }}>
@@ -788,9 +789,9 @@ export default function AnnouncementsPage() {
         <div style={{ background: 'rgba(255,107,107,.08)', border: '1px solid rgba(255,107,107,.25)', borderRadius: '10px', padding: '10px 14px', color: theme.danger, fontSize: '12px', marginBottom: '16px' }}>{eventsError}</div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '10px' }}>
         {eventList.length === 0 ? (
-          <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '12px', padding: '24px 16px', color: theme.textMuted, fontSize: '12px', textAlign: 'center' }}>
+          <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '12px', padding: '24px 16px', color: theme.textMuted, fontSize: '12px', textAlign: 'center', gridColumn: '1 / -1' }}>
             No events yet.
           </div>
         ) : (
