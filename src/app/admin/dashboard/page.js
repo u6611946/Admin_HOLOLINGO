@@ -260,9 +260,8 @@ export default function DashboardPage() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
         <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '22px', padding: '22px', minHeight: '420px', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <div style={{ marginBottom: '20px' }}>
             <div style={{ color: theme.textStrong, fontSize: '20px', fontWeight: 700 }}>Scans per day</div>
-            <div style={{ color: theme.accent, fontSize: '15px', fontWeight: 500, cursor: 'pointer' }}>Full report ›</div>
           </div>
 
           {scanHistory.length > 0 ? (() => {
