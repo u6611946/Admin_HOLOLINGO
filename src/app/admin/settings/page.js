@@ -46,19 +46,12 @@ function ThemeToggleRow({ theme, mode, toggleMode }) {
   );
 }
 
-function generatePassword() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
-  const bytes = new Uint32Array(12);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (n) => chars[n % chars.length]).join('');
-}
-
-function CredentialsCard({ theme, email, password }) {
+function SetupLinkCard({ theme, email, link }) {
   const [copied, setCopied] = useState(false);
 
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(password);
+      await navigator.clipboard.writeText(link);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -69,25 +62,62 @@ function CredentialsCard({ theme, email, password }) {
   return (
     <div>
       <div style={{color:theme.textMuted,fontSize:'11px',marginBottom:'16px'}}>
-        Send these to her yourself — this password won&apos;t be shown again, and it expires in 30 minutes if she doesn&apos;t sign in.
+        Send this link to her yourself — she uses it to set her own password, which you never see. It expires in 30 minutes if she doesn&apos;t sign in.
       </div>
       <div style={{marginBottom:'10px'}}>
         <div style={{color:theme.accent,fontSize:'10px',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'4px'}}>Email</div>
         <div style={{background:theme.bgInput,border:`1px solid ${theme.border}`,borderRadius:'8px',padding:'9px 12px',color:theme.text,fontSize:'13px',fontFamily:'monospace',wordBreak:'break-all'}}>{email}</div>
       </div>
       <div style={{marginBottom:'6px'}}>
-        <div style={{color:theme.accent,fontSize:'10px',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'4px'}}>Password</div>
+        <div style={{color:theme.accent,fontSize:'10px',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'4px'}}>Setup link</div>
         <div style={{display:'flex',gap:'8px'}}>
-          <div style={{flex:1,background:theme.bgInput,border:`1px solid ${theme.border}`,borderRadius:'8px',padding:'9px 12px',color:theme.text,fontSize:'13px',fontFamily:'monospace'}}>{password}</div>
-          <button type="button" onClick={copy} style={{padding:'0 14px',borderRadius:'8px',border:`1px solid ${theme.accentBorder}`,background:theme.accentBg,color:theme.accent,fontSize:'12px',fontWeight:600,cursor:'pointer'}}>{copied ? 'Copied' : 'Copy'}</button>
+          <div style={{flex:1,minWidth:0,background:theme.bgInput,border:`1px solid ${theme.border}`,borderRadius:'8px',padding:'9px 12px',color:theme.text,fontSize:'12px',fontFamily:'monospace',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{link}</div>
+          <button type="button" onClick={copy} style={{padding:'0 14px',borderRadius:'8px',border:`1px solid ${theme.accentBorder}`,background:theme.accentBg,color:theme.accent,fontSize:'12px',fontWeight:600,cursor:'pointer',flexShrink:0}}>{copied ? 'Copied' : 'Copy'}</button>
         </div>
       </div>
     </div>
   );
 }
 
+function CredentialsCard({ theme, email, name, password }) {
+  const [copiedField, setCopiedField] = useState(null);
+
+  const copy = async (field, value) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedField(field);
+      setTimeout(() => setCopiedField((current) => (current === field ? null : current)), 1500);
+    } catch {
+      // Clipboard API unavailable — she can still select and copy the text manually.
+    }
+  };
+
+  const rows = [
+    { field: 'name', label: 'Name', value: name },
+    { field: 'email', label: 'Email', value: email },
+    { field: 'password', label: 'Password', value: password },
+  ];
+
+  return (
+    <div>
+      <div style={{color:theme.textMuted,fontSize:'11px',marginBottom:'16px'}}>
+        Copy these and send them to her yourself, however you&apos;d like. This is the only time the password is shown.
+      </div>
+      {rows.map((row, index) => (
+        <div key={row.field} style={{marginBottom: index === rows.length - 1 ? '6px' : '10px'}}>
+          <div style={{color:theme.accent,fontSize:'10px',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'4px'}}>{row.label}</div>
+          <div style={{display:'flex',gap:'8px'}}>
+            <div style={{flex:1,minWidth:0,background:theme.bgInput,border:`1px solid ${theme.border}`,borderRadius:'8px',padding:'9px 12px',color:theme.text,fontSize:'13px',fontFamily:'monospace',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{row.value}</div>
+            <button type="button" onClick={() => copy(row.field, row.value)} style={{padding:'0 14px',borderRadius:'8px',border:`1px solid ${theme.accentBorder}`,background:theme.accentBg,color:theme.accent,fontSize:'12px',fontWeight:600,cursor:'pointer',flexShrink:0}}>{copiedField === row.field ? 'Copied' : 'Copy'}</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function AddAdminModal({ onClose, onAdd, theme }) {
-  const [form, setForm] = useState({ email: '', name: '', role: 'admin', password: generatePassword() });
+  const [form, setForm] = useState({ email: '', name: '', role: 'admin', password: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [created, setCreated] = useState(null);
@@ -114,7 +144,7 @@ function AddAdminModal({ onClose, onAdd, theme }) {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Unable to create admin.');
-      setCreated({ email: form.email.trim(), password: form.password });
+      setCreated({ email: form.email.trim(), name: form.name.trim(), password: form.password });
       onAdd();
     } catch (inviteError) {
       setError(inviteError.message);
@@ -139,14 +169,14 @@ function AddAdminModal({ onClose, onAdd, theme }) {
           </div>
           <div>
             <div style={{color:theme.textStrong,fontSize:'15px',fontWeight:600}}>{created ? 'Admin created' : 'Add new admin'}</div>
-            {!created && <div style={{color:theme.textMuted,fontSize:'11px',marginTop:'2px'}}>Set her login here — no email required</div>}
+            {!created && <div style={{color:theme.textMuted,fontSize:'11px',marginTop:'2px'}}>Set her login here — no email sent automatically</div>}
           </div>
           <button onClick={onClose} style={{marginLeft:'auto',background:'none',border:'none',color:theme.textMuted,fontSize:'20px',cursor:'pointer',lineHeight:1}}>×</button>
         </div>
 
         {created ? (
           <>
-            <CredentialsCard theme={theme} email={created.email} password={created.password} />
+            <CredentialsCard theme={theme} email={created.email} name={created.name} password={created.password} />
             <button
               onClick={onClose}
               style={{width:'100%',marginTop:'18px',padding:'10px',borderRadius:'8px',border:`1px solid ${theme.accentBorder}`,background:theme.accentBg,color:theme.accent,fontSize:'13px',fontWeight:600,cursor:'pointer'}}
@@ -176,20 +206,6 @@ function AddAdminModal({ onClose, onAdd, theme }) {
               />
             </div>
 
-            <div style={{marginBottom:'14px'}}>
-              <div style={{color:theme.accent,fontSize:'11px',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'.06em'}}>Password</div>
-              <div style={{display:'flex',gap:'8px'}}>
-                <input
-                  type="text"
-                  value={form.password}
-                  onChange={e => setForm(p => ({...p, password: e.target.value}))}
-                  style={{flex:1,background:theme.bgInput,border:`1px solid ${theme.border}`,borderRadius:'8px',padding:'9px 12px',color:theme.text,fontSize:'13px',fontFamily:'monospace',outline:'none',boxSizing:'border-box'}}
-                />
-                <button type="button" onClick={() => setForm(p => ({...p, password: generatePassword()}))} style={{padding:'0 12px',borderRadius:'8px',border:`1px solid ${theme.border}`,background:theme.bgInput,color:theme.textMuted,fontSize:'12px',cursor:'pointer',whiteSpace:'nowrap'}}>Regenerate</button>
-              </div>
-              <div style={{color:theme.textMuted,fontSize:'10px',marginTop:'6px'}}>She has 30 minutes to sign in with this before it expires.</div>
-            </div>
-
             <div style={{marginBottom:'18px'}}>
               <div style={{color:theme.accent,fontSize:'11px',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'.06em'}}>Role</div>
               <div style={{display:'flex',gap:'8px'}}>
@@ -207,6 +223,18 @@ function AddAdminModal({ onClose, onAdd, theme }) {
                   >{r.label}</button>
                 ))}
               </div>
+            </div>
+
+            <div style={{marginBottom:'18px'}}>
+              <div style={{color:theme.accent,fontSize:'11px',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'.06em'}}>Password</div>
+              <input
+                type="text"
+                placeholder="At least 6 characters"
+                value={form.password}
+                onChange={e => setForm(p => ({...p, password: e.target.value}))}
+                style={{width:'100%',background:theme.bgInput,border:`1px solid ${theme.border}`,borderRadius:'8px',padding:'9px 12px',color:theme.text,fontSize:'13px',outline:'none',boxSizing:'border-box',fontFamily:'monospace'}}
+              />
+              <div style={{color:theme.textMuted,fontSize:'10px',marginTop:'8px'}}>She can sign in with this right away. You&apos;ll send her the name and password yourself — nothing is emailed automatically.</div>
             </div>
 
             {error && <div style={{color:theme.danger,fontSize:'11px',marginBottom:'12px'}}>{error}</div>}
@@ -227,13 +255,11 @@ function AddAdminModal({ onClose, onAdd, theme }) {
 }
 
 function ResetPasswordModal({ theme, admin, onClose }) {
-  const [password, setPassword] = useState(generatePassword());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [done, setDone] = useState(false);
+  const [link, setLink] = useState(null);
 
   const handleReset = async () => {
-    if (password.length < 6) { setError('Password must be at least 6 characters.'); return; }
     setError('');
     setLoading(true);
     try {
@@ -241,11 +267,11 @@ function ResetPasswordModal({ theme, admin, onClose }) {
       const response = await fetch('/api/admin/invite', {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid: admin.id, password }),
+        body: JSON.stringify({ uid: admin.id, regenerateLink: true }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Unable to reset invite.');
-      setDone(true);
+      setLink(result.setupLink);
     } catch (resetError) {
       setError(resetError.message);
     } finally {
@@ -264,31 +290,19 @@ function ResetPasswordModal({ theme, admin, onClose }) {
       }}>
         <div style={{display:'flex',alignItems:'center',gap:'12px',marginBottom:'20px'}}>
           <div>
-            <div style={{color:theme.textStrong,fontSize:'15px',fontWeight:600}}>{done ? 'New password ready' : `Reset invite for ${admin.name}`}</div>
-            {!done && <div style={{color:theme.textMuted,fontSize:'11px',marginTop:'2px'}}>Generates a new password and a fresh 30-minute window</div>}
+            <div style={{color:theme.textStrong,fontSize:'15px',fontWeight:600}}>{link ? 'New setup link ready' : `Reset invite for ${admin.name}`}</div>
+            {!link && <div style={{color:theme.textMuted,fontSize:'11px',marginTop:'2px'}}>Issues a fresh setup link and a new 30-minute window</div>}
           </div>
           <button onClick={onClose} style={{marginLeft:'auto',background:'none',border:'none',color:theme.textMuted,fontSize:'20px',cursor:'pointer',lineHeight:1}}>×</button>
         </div>
 
-        {done ? (
+        {link ? (
           <>
-            <CredentialsCard theme={theme} email={admin.email} password={password} />
+            <SetupLinkCard theme={theme} email={admin.email} link={link} />
             <button onClick={onClose} style={{width:'100%',marginTop:'18px',padding:'10px',borderRadius:'8px',border:`1px solid ${theme.accentBorder}`,background:theme.accentBg,color:theme.accent,fontSize:'13px',fontWeight:600,cursor:'pointer'}}>Done</button>
           </>
         ) : (
           <>
-            <div style={{marginBottom:'14px'}}>
-              <div style={{color:theme.accent,fontSize:'11px',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'.06em'}}>New password</div>
-              <div style={{display:'flex',gap:'8px'}}>
-                <input
-                  type="text"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  style={{flex:1,background:theme.bgInput,border:`1px solid ${theme.border}`,borderRadius:'8px',padding:'9px 12px',color:theme.text,fontSize:'13px',fontFamily:'monospace',outline:'none',boxSizing:'border-box'}}
-                />
-                <button type="button" onClick={() => setPassword(generatePassword())} style={{padding:'0 12px',borderRadius:'8px',border:`1px solid ${theme.border}`,background:theme.bgInput,color:theme.textMuted,fontSize:'12px',cursor:'pointer',whiteSpace:'nowrap'}}>Regenerate</button>
-              </div>
-            </div>
             {error && <div style={{color:theme.danger,fontSize:'11px',marginBottom:'12px'}}>{error}</div>}
             <div style={{display:'flex',gap:'10px'}}>
               <button onClick={onClose} style={{flex:1,padding:'9px',borderRadius:'8px',border:`1px solid ${theme.border}`,background:'transparent',color:theme.textMuted,fontSize:'13px',cursor:'pointer'}}>Cancel</button>
@@ -296,7 +310,7 @@ function ResetPasswordModal({ theme, admin, onClose }) {
                 onClick={handleReset}
                 disabled={loading}
                 style={{flex:1,padding:'9px',borderRadius:'8px',border:`1px solid ${theme.accentBorder}`,background:theme.accentBg,color:theme.accent,fontSize:'13px',fontWeight:600,cursor:'pointer',opacity:loading?0.6:1}}
-              >{loading ? 'Resetting…' : 'Reset & get password'}</button>
+              >{loading ? 'Resetting…' : 'Reset & get link'}</button>
             </div>
           </>
         )}

@@ -13,6 +13,7 @@ import { db } from '../../../lib/firebase';
 const navItems = [
   {
     section: 'Overview',
+    color: '#a78bfa',
     items: [
       { href: '/admin/dashboard', icon: '⊞', label: 'Dashboard' },
       { href: '/admin/analytics', icon: '◷', label: 'Reports' },
@@ -20,18 +21,13 @@ const navItems = [
   },
   {
     section: 'Users',
+    color: '#ffc800',
     items: [
       {
         href: '/admin/users',
         icon: '◯',
         label: 'Users',
         badgeStyle: 'count',
-      },
-      {
-        href: '/admin/flagged',
-        icon: '⚑',
-        label: 'Flagged',
-        badgeStyle: 'alert',
       },
       {
         href: '/admin/feedback',
@@ -42,6 +38,7 @@ const navItems = [
   },
   {
     section: 'Content',
+    color: '#00e5ff',
     items: [
       {
         href: '/admin/popular-words',
@@ -67,6 +64,7 @@ const navItems = [
   },
   {
     section: 'System',
+    color: '#4ade80',
     items: [
       {
         href: '/admin/settings',
@@ -420,357 +418,6 @@ function EditProfileModal({ onClose, account, onUpdated }) {
   );
 }
 
-/* ─────────────────────────────────────────────────────────────
-   CHANGE PASSWORD MODAL
-───────────────────────────────────────────────────────────── */
-
-function ChangePasswordModal({ onClose }) {
-  const { theme } = useTheme();
-
-  const [current, setCurrent] = useState('');
-  const [newPass, setNewPass] = useState('');
-  const [confirm, setConfirm] = useState('');
-  const [showCur, setShowCur] = useState(false);
-  const [showNew, setShowNew] = useState(false);
-  const [showCon, setShowCon] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState('');
-
-  const strength = (() => {
-    const p = newPass;
-
-    if (!p) return null;
-
-    let s = 0;
-
-    if (p.length >= 8) s++;
-    if (/[A-Z]/.test(p)) s++;
-    if (/[0-9]/.test(p)) s++;
-    if (/[^A-Za-z0-9]/.test(p)) s++;
-
-    if (s <= 1) {
-      return {
-        label: 'Weak',
-        color: '#ff6b6b',
-        pct: '25%',
-      };
-    }
-
-    if (s === 2) {
-      return {
-        label: 'Fair',
-        color: '#f59e0b',
-        pct: '50%',
-      };
-    }
-
-    if (s === 3) {
-      return {
-        label: 'Good',
-        color: theme.accent,
-        pct: '75%',
-      };
-    }
-
-    return {
-      label: 'Strong',
-      color: '#4ade80',
-      pct: '100%',
-    };
-  })();
-
-  const handleSave = async () => {
-    if (!current) {
-      setError('Enter your current password.');
-      return;
-    }
-
-    if (newPass.length < 8) {
-      setError('New password needs 8+ characters.');
-      return;
-    }
-
-    if (newPass !== confirm) {
-      setError('Passwords do not match.');
-      return;
-    }
-
-    setError('');
-    setSaving(true);
-
-    await new Promise((r) => setTimeout(r, 700));
-
-    setSaving(false);
-    setSaved(true);
-
-    setTimeout(() => {
-      setSaved(false);
-      onClose();
-    }, 1200);
-  };
-
-  const inputStyle = {
-    flex: 1,
-    background: 'none',
-    border: 'none',
-    padding: '9px 12px',
-    color: theme.text,
-    fontSize: '13px',
-    outline: 'none',
-  };
-
-  const passWrap = (hasError) => ({
-    display: 'flex',
-    alignItems: 'center',
-    background: theme.bgInput,
-    border: `1px solid ${
-      hasError ? 'rgba(255,107,107,.4)' : theme.border
-    }`,
-    borderRadius: '8px',
-    overflow: 'hidden',
-  });
-
-  const eyeBtn = (fn, show) => (
-    <button
-      onClick={fn}
-      style={{
-        background: 'none',
-        border: 'none',
-        color: theme.textMuted,
-        cursor: 'pointer',
-        padding: '0 12px',
-        fontSize: '14px',
-      }}
-    >
-      {show ? '🙈' : '👁️'}
-    </button>
-  );
-
-  return (
-    <Modal
-      title="Change password"
-      subtitle="Update your login credentials"
-      onClose={onClose}
-    >
-      <div style={{ padding: '18px 20px' }}>
-
-        {/* Current */}
-        <div style={{ marginBottom: '12px' }}>
-          <div
-            style={{
-              color: theme.accent,
-              fontSize: '10px',
-              textTransform: 'uppercase',
-              letterSpacing: '.06em',
-              marginBottom: '6px',
-            }}
-          >
-            Current password
-          </div>
-
-          <div style={passWrap(false)}>
-            <input
-              type={showCur ? 'text' : 'password'}
-              value={current}
-              onChange={(e) => setCurrent(e.target.value)}
-              placeholder="••••••••"
-              style={inputStyle}
-            />
-
-            {eyeBtn(
-              () => setShowCur((p) => !p),
-              showCur
-            )}
-          </div>
-        </div>
-
-        {/* New */}
-        <div style={{ marginBottom: '12px' }}>
-          <div
-            style={{
-              color: theme.accent,
-              fontSize: '10px',
-              textTransform: 'uppercase',
-              letterSpacing: '.06em',
-              marginBottom: '6px',
-            }}
-          >
-            New password
-          </div>
-
-          <div style={passWrap(false)}>
-            <input
-              type={showNew ? 'text' : 'password'}
-              value={newPass}
-              onChange={(e) => setNewPass(e.target.value)}
-              placeholder="••••••••"
-              style={inputStyle}
-            />
-
-            {eyeBtn(
-              () => setShowNew((p) => !p),
-              showNew
-            )}
-          </div>
-
-          {strength && (
-            <div style={{ marginTop: '6px' }}>
-              <div
-                style={{
-                  height: '3px',
-                  borderRadius: '2px',
-                  background: theme.border,
-                  overflow: 'hidden',
-                }}
-              >
-                <div
-                  style={{
-                    height: '100%',
-                    width: strength.pct,
-                    background: strength.color,
-                    transition:
-                      'width .3s, background .3s',
-                  }}
-                />
-              </div>
-
-              <div
-                style={{
-                  color: strength.color,
-                  fontSize: '10px',
-                  marginTop: '3px',
-                }}
-              >
-                {strength.label}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Confirm */}
-        <div style={{ marginBottom: '4px' }}>
-          <div
-            style={{
-              color: theme.accent,
-              fontSize: '10px',
-              textTransform: 'uppercase',
-              letterSpacing: '.06em',
-              marginBottom: '6px',
-            }}
-          >
-            Confirm new password
-          </div>
-
-          <div
-            style={passWrap(
-              confirm && confirm !== newPass
-            )}
-          >
-            <input
-              type={showCon ? 'text' : 'password'}
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              placeholder="••••••••"
-              style={inputStyle}
-            />
-
-            {eyeBtn(
-              () => setShowCon((p) => !p),
-              showCon
-            )}
-          </div>
-
-          {confirm && confirm !== newPass && (
-            <div
-              style={{
-                color: theme.danger,
-                fontSize: '10px',
-                marginTop: '4px',
-              }}
-            >
-              Passwords don&apos;t match
-            </div>
-          )}
-        </div>
-
-        {/* Error */}
-        {error && (
-          <div
-            style={{
-              color: theme.danger,
-              fontSize: '12px',
-              marginTop: '10px',
-              padding: '8px 12px',
-              background: 'rgba(255,107,107,.08)',
-              border: '1px solid rgba(255,107,107,.15)',
-              borderRadius: '8px',
-            }}
-          >
-            {error}
-          </div>
-        )}
-
-        {/* Buttons */}
-        <div
-          style={{
-            display: 'flex',
-            gap: '10px',
-            marginTop: '18px',
-          }}
-        >
-          <button
-            onClick={onClose}
-            style={{
-              flex: 1,
-              padding: '10px',
-              borderRadius: '10px',
-              border: `1px solid ${theme.border}`,
-              background: 'transparent',
-              color: theme.textMuted,
-              fontSize: '13px',
-              cursor: 'pointer',
-            }}
-          >
-            Cancel
-          </button>
-
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            style={{
-              flex: 2,
-              padding: '10px',
-              borderRadius: '10px',
-              border: `1px solid ${
-                saved
-                  ? 'rgba(74,222,128,.35)'
-                  : theme.accentBorder
-              }`,
-              background: saved
-                ? 'rgba(74,222,128,.1)'
-                : theme.accentBg,
-              color: saved
-                ? '#4ade80'
-                : theme.accent,
-              fontSize: '13px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'all .2s',
-              opacity: saving ? 0.7 : 1,
-            }}
-          >
-            {saving
-              ? 'Saving…'
-              : saved
-              ? '✓ Updated'
-              : 'Update password'}
-          </button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
 
 /* ─────────────────────────────────────────────────────────────
    SIDEBAR
@@ -784,9 +431,7 @@ export default function Sidebar() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [showPassModal, setShowPassModal] = useState(false);
   const [userCount, setUserCount] = useState(0);
-  const [flaggedCount, setFlaggedCount] = useState(0);
   const [account, setAccount] = useState({ name: '', email: '', role: 'User', nameUpdatedAt: null });
 
   useEffect(() => {
@@ -817,26 +462,12 @@ export default function Sidebar() {
     });
   }, []);
 
-  useEffect(() => {
-    if (!db) return undefined;
-    return onSnapshot(collection(db, 'flagged'), (snapshot) => {
-      setFlaggedCount(snapshot.size);
-    });
-  }, []);
-
   const adminMenuOptions = [
     {
       label: 'Edit profile',
       action: () => {
         setMenuOpen(false);
         setShowEditModal(true);
-      },
-    },
-    {
-      label: 'Change password',
-      action: () => {
-        setMenuOpen(false);
-        setShowPassModal(true);
       },
     },
     {
@@ -870,12 +501,6 @@ export default function Sidebar() {
           account={account}
           onUpdated={(updatedAccount) => setAccount((current) => ({ ...current, ...updatedAccount }))}
           onClose={() => setShowEditModal(false)}
-        />
-      )}
-
-      {showPassModal && (
-        <ChangePasswordModal
-          onClose={() => setShowPassModal(false)}
         />
       )}
 
@@ -994,6 +619,7 @@ export default function Sidebar() {
 
               {sec.items.map((item) => {
                 const active = path.startsWith(item.href);
+                const sectionColor = sec.color;
 
                 return (
                   <Link
@@ -1013,11 +639,11 @@ export default function Sidebar() {
                         marginBottom: '5px',
 
                         background: active
-                          ? theme.accentBg
+                          ? `${sectionColor}18`
                           : 'transparent',
 
                         border: active
-                          ? `1px solid ${theme.accentBorder}`
+                          ? `1px solid ${sectionColor}45`
                           : '1px solid transparent',
 
                         transition: '.2s ease',
@@ -1025,7 +651,7 @@ export default function Sidebar() {
 
                         boxShadow:
                           active && theme.mode === 'dark'
-                            ? '0 0 20px rgba(0,229,255,.08)'
+                            ? `0 0 20px ${sectionColor}20`
                             : 'none',
                       }}
                     >
@@ -1036,13 +662,13 @@ export default function Sidebar() {
                           borderRadius: '12px',
 
                           background: active
-                            ? theme.accentBg
+                            ? `${sectionColor}18`
                             : theme.mode === 'dark'
                             ? 'rgba(255,255,255,.03)'
                             : 'rgba(0,0,0,.035)',
 
                           border: active
-                            ? `1px solid ${theme.accentBorder}`
+                            ? `1px solid ${sectionColor}45`
                             : `1px solid ${theme.border}`,
 
                           display: 'flex',
@@ -1052,7 +678,7 @@ export default function Sidebar() {
                           overflow: 'hidden',
 
                           color: active
-                            ? theme.accent
+                            ? sectionColor
                             : theme.textMuted,
 
                           fontSize: item.icon.length > 1 ? '9px' : '16px',
@@ -1078,7 +704,7 @@ export default function Sidebar() {
                         style={{
                           flex: 1,
                           color: active
-                            ? theme.accent
+                            ? sectionColor
                             : theme.text,
 
                           fontSize: '13px',
@@ -1088,23 +714,23 @@ export default function Sidebar() {
                         {item.label}
                       </span>
 
-                      {(item.badge || item.href === '/admin/users' || (item.href === '/admin/flagged' && flaggedCount > 0)) && (
+                      {(item.badge || item.href === '/admin/users') && (
                         <span
                           style={{
                             background:
                               item.badgeStyle === 'alert'
                                 ? 'rgba(255,107,107,.14)'
-                                : theme.accentBg,
+                                : `${sectionColor}18`,
 
                             color:
                               item.badgeStyle === 'alert'
                                 ? '#ff7b7b'
-                                : theme.accent,
+                                : sectionColor,
 
                             border:
                               item.badgeStyle === 'alert'
                                 ? '1px solid rgba(255,107,107,.18)'
-                                : `1px solid ${theme.accentBorder}`,
+                                : `1px solid ${sectionColor}45`,
 
                             borderRadius: '999px',
                             padding: '4px 8px',
@@ -1114,9 +740,7 @@ export default function Sidebar() {
                         >
                           {item.href === '/admin/users'
                             ? userCount.toLocaleString()
-                            : item.href === '/admin/flagged'
-                              ? flaggedCount.toLocaleString()
-                              : item.badge}
+                            : item.badge}
                         </span>
                       )}
                     </div>

@@ -4,9 +4,18 @@ import StatCard from '../../components/admin/StatCard';
 import Link from 'next/link';
 import { useTheme } from '../../ThemeContext';
 import { collection, collectionGroup, onSnapshot } from 'firebase/firestore';
-import { db } from '../../../lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth, db } from '../../../lib/firebase';
+
+const ONLINE_WINDOW_MS = 45 * 1000;
 
 const langColors = { TH: '#00e5ff' };
+
+const wordCardColors = ['#ffc800', '#4ade80', '#a78bfa'];
+
+const barColors = ['#ffc800', '#4ade80', '#a78bfa', '#00e5ff', '#ff8fa3', '#ff9f43', '#5b9dff'];
+
+const periodColors = { week: '#ffc800', month: '#4ade80', year: '#a78bfa' };
 
 const asDate = (value) => {
   if (!value) return null;
@@ -38,10 +47,33 @@ export default function DashboardPage() {
   const { theme } = useTheme();
   const [period, setPeriod] = useState('week');
   const [dashboardUsers, setDashboardUsers] = useState([]);
+  const [authUsers, setAuthUsers] = useState({});
   const [scanHistory, setScanHistory] = useState([]);
   const [gobotMessages, setGobotMessages] = useState([]);
-  const [flaggedIssues, setFlaggedIssues] = useState([]);
   const [loadError, setLoadError] = useState('');
+  const [tick, setTick] = useState(() => Date.now());
+
+  // Online/offline is time-based (a stale heartbeat), so it needs to re-evaluate even when
+  // no new Firestore data arrives.
+  useEffect(() => {
+    const id = setInterval(() => setTick(Date.now()), 5000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (!auth) return undefined;
+    return onAuthStateChanged(auth, async (user) => {
+      if (!user) return;
+      try {
+        const token = await user.getIdToken();
+        const response = await fetch('/api/admin/users', { headers: { Authorization: `Bearer ${token}` } });
+        const result = await response.json();
+        if (response.ok) setAuthUsers(result.authUsers || {});
+      } catch {
+        // Leave authUsers as-is — status just falls back to "Offline" until this succeeds.
+      }
+    });
+  }, []);
 
   useEffect(() => {
     if (!db) return undefined;
@@ -64,40 +96,44 @@ export default function DashboardPage() {
       setLoadError((current) => current || `Unable to load chat_history: ${error.message}`);
     });
 
-    const flaggedUnsub = onSnapshot(collection(db, 'flagged'), (snapshot) => {
-      setFlaggedIssues(snapshot.docs.map((document) => ({ id: document.id, ...document.data() })));
-    }, (error) => {
-      setLoadError((current) => current || `Unable to load flagged: ${error.message}`);
-    });
-
     return () => {
       usersUnsub();
       scansUnsub();
       gobotUnsub();
-      flaggedUnsub();
     };
   }, []);
 
-  const activeToday = dashboardUsers.filter((user) => {
-    const activity = user.lastActive || user.last_active || user.updatedAt || user.updated_at;
-    const date = asDate(activity);
-    if (!date) return user.status !== 'inactive' && user.active !== false;
-    return date.toDateString() === new Date().toDateString();
-  }).length;
+  // Real presence: lastSeenAt is the live heartbeat the app writes while open; lastSignInAt
+  // (Firebase Auth) is the fallback for users on an app version before that existed.
+  const getLastSeen = (user) => asDate(user.lastSeenAt) || asDate((authUsers[user.id] || {}).lastSignInAt);
+  const isUserSuspended = (user) => Boolean((authUsers[user.id] || {}).disabled);
+  const isUserOnline = (user) => {
+    if (isUserSuspended(user)) return false;
+    const lastSeen = getLastSeen(user);
+    return Boolean(lastSeen) && (tick - lastSeen.getTime()) < ONLINE_WINDOW_MS;
+  };
+
+  const activeToday = dashboardUsers.filter((user) => !isUserSuspended(user) && isSameDay(getLastSeen(user))).length;
 
   const wordsScannedToday = scanHistory.filter((event) => isSameDay(getScanDate(event))).length;
   const gobotChatsToday = gobotMessages.filter((message) => isSameDay(getScanDate(message))).length;
 
-  const inactiveUsersCount = dashboardUsers.filter((user) => user.status === 'inactive' || user.active === false).length;
-  const attentionParts = [
-    ...flaggedIssues.slice(0, 2).map((issue) => issue.title || issue.label || 'Flagged item'),
-    inactiveUsersCount > 0 ? `${inactiveUsersCount} inactive user${inactiveUsersCount === 1 ? '' : 's'}` : null,
-  ].filter(Boolean);
-  const attentionCount = flaggedIssues.length + (inactiveUsersCount > 0 ? 1 : 0);
+  const suspendedUsersCount = dashboardUsers.filter((user) => isUserSuspended(user)).length;
+  const attentionMessage = suspendedUsersCount > 0 ? `${suspendedUsersCount} suspended user${suspendedUsersCount === 1 ? '' : 's'}` : null;
 
   const scansInPeriod = scanHistory.filter((event) => isWithinDays(getScanDate(event), periodDays[period]));
 
-  const popularWordCounts = scansInPeriod.reduce((counts, event) => {
+  // Only report on a period once history actually reaches back that far — otherwise month/year
+  // would just silently repeat the same (incomplete) data as week, implying stats that aren't real yet.
+  const earliestScanDate = scanHistory.reduce((earliest, event) => {
+    const date = getScanDate(event);
+    if (!date) return earliest;
+    return !earliest || date < earliest ? date : earliest;
+  }, null);
+  const historyDays = earliestScanDate ? (Date.now() - earliestScanDate.getTime()) / 86400000 : 0;
+  const hasFullPeriodHistory = historyDays >= periodDays[period];
+
+  const popularWordCounts = hasFullPeriodHistory ? scansInPeriod.reduce((counts, event) => {
     const key = getWordKey(event);
     if (!key) return counts;
 
@@ -106,7 +142,7 @@ export default function DashboardPage() {
     if (event.definition) value.definition = event.definition;
     counts[key] = value;
     return counts;
-  }, {});
+  }, {}) : {};
 
   const topWords = Object.values(popularWordCounts)
     .sort((a, b) => b.count - a.count)
@@ -117,20 +153,26 @@ export default function DashboardPage() {
       meaning: word.definition || 'No definition recorded',
     }));
 
-  const recentUsers = dashboardUsers.slice(0, 5).map((user) => {
-    const name = user.name || user.displayName || user.email || 'Unnamed user';
-    const inactive = user.status === 'inactive' || user.active === false;
-    return {
-      initial: name.charAt(0).toUpperCase(),
-      color: inactive ? '#ff6b6b' : theme.accent,
-      bg: inactive ? 'rgba(255,107,107,.12)' : theme.accentBg,
-      name,
-      loc: user.city || user.location || 'Location unknown',
-      langs: Array.isArray(user.language) ? user.language : [user.language || 'TH'],
-      status: inactive ? 'Inactive' : 'Active',
-      statusColor: inactive ? '#ff6b6b' : '#4ade80',
-    };
-  });
+  const recentUsers = [...dashboardUsers]
+    .sort((a, b) => (getLastSeen(b)?.getTime() || 0) - (getLastSeen(a)?.getTime() || 0))
+    .slice(0, 5)
+    .map((user) => {
+      const name = user.name || user.displayName || user.email || 'Unnamed user';
+      const suspended = isUserSuspended(user);
+      const online = isUserOnline(user);
+      const statusLabel = suspended ? 'Suspended' : online ? 'Online' : 'Offline';
+      const statusColor = suspended ? '#ff6b6b' : online ? '#4ade80' : '#8a97a3';
+      return {
+        initial: name.charAt(0).toUpperCase(),
+        color: online && !suspended ? theme.accent : '#ff6b6b',
+        bg: online && !suspended ? theme.accentBg : 'rgba(255,107,107,.12)',
+        name,
+        loc: user.city || user.location || 'Location unknown',
+        langs: Array.isArray(user.language) ? user.language : [user.language || 'TH'],
+        status: statusLabel,
+        statusColor,
+      };
+    });
 
   return (
     <div style={{ padding: '24px' }}>
@@ -168,12 +210,16 @@ export default function DashboardPage() {
                 style={{
                   padding: '6px 14px',
                   borderRadius: '8px',
-                  border: period === p ? `1px solid ${theme.accentBorder}` : `1px solid ${theme.border}`,
-                  background: period === p ? theme.accentBg : theme.bgInput,
-                  color: period === p ? theme.accent : theme.textMuted,
+                  border: period === p ? `1px solid ${periodColors[p]}` : `1px solid ${theme.border}`,
+                  background: period === p ? `${periodColors[p]}2a` : theme.bgInput,
+                  color: period === p ? periodColors[p] : theme.textMuted,
                   fontSize: '11px',
+                  fontWeight: period === p ? 700 : 400,
                   textTransform: 'capitalize',
                   cursor: 'pointer',
+                  outline: 'none',
+                  boxShadow: period === p ? `0 0 0 3px ${periodColors[p]}25` : 'none',
+                  transition: 'all .15s',
                 }}
               >
                 {p}
@@ -184,47 +230,71 @@ export default function DashboardPage() {
 
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
           {topWords.length > 0 ? (
-            topWords.map((word) => (
-              <div key={word.word} style={{ background: theme.bgInput, borderRadius: '14px', padding: '16px 22px', textAlign: 'center', flex: '1 1 160px' }}>
-                <div style={{ color: theme.textStrong, fontSize: '20px', fontWeight: 700 }}>{word.word}</div>
-                <div style={{ color: theme.textMuted, fontSize: '12px', marginTop: '4px', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{word.meaning}</div>
-                <div style={{ color: theme.accent, fontSize: '11px', marginTop: '6px' }}>{word.count.toLocaleString()} scans</div>
-              </div>
-            ))
+            topWords.map((word, index) => {
+              const wordColor = wordCardColors[index % wordCardColors.length];
+              return (
+                <div
+                  key={word.word}
+                  style={{
+                    background: theme.mode === 'light' ? `linear-gradient(180deg, ${wordColor}38, ${wordColor}12)` : theme.bgInput,
+                    border: theme.mode === 'light' ? `1px solid ${wordColor}70` : '1px solid transparent',
+                    borderRadius: '14px',
+                    padding: '16px 22px',
+                    textAlign: 'center',
+                    flex: '1 1 160px',
+                  }}
+                >
+                  <div style={{ color: theme.textStrong, fontSize: '20px', fontWeight: 700 }}>{word.word}</div>
+                  <div style={{ color: theme.textMuted, fontSize: '12px', marginTop: '4px', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{word.meaning}</div>
+                  <div style={{ color: theme.mode === 'light' ? wordColor : theme.accent, fontSize: '11px', marginTop: '6px', fontWeight: 700 }}>{word.count.toLocaleString()} scans</div>
+                </div>
+              );
+            })
           ) : (
-            <div style={{ color: theme.textMuted, fontSize: '12px', padding: '12px 0' }}>No scan data yet for this period.</div>
+            <div style={{ color: theme.textMuted, fontSize: '12px', padding: '12px 0' }}>
+              {hasFullPeriodHistory ? 'No scan data yet for this period.' : `No data yet for this ${period} — check back once a full ${period} of activity has been recorded.`}
+            </div>
           )}
         </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-        <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '22px', padding: '22px', minHeight: '420px' }}>
+        <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '22px', padding: '22px', minHeight: '420px', display: 'flex', flexDirection: 'column' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <div style={{ color: theme.textStrong, fontSize: '20px', fontWeight: 700 }}>Scans per day</div>
             <div style={{ color: theme.accent, fontSize: '15px', fontWeight: 500, cursor: 'pointer' }}>Full report ›</div>
           </div>
 
-          {scanHistory.length > 0 ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: '12px', alignItems: 'end', height: '210px' }}>
-              {Array.from({ length: 7 }, (_, index) => {
-                const day = new Date();
-                day.setDate(day.getDate() - (6 - index));
-                const label = day.toLocaleDateString('en-US', { weekday: 'short' });
-                const value = scanHistory.filter((event) => {
-                  const eventDate = getScanDate(event);
-                  return eventDate && eventDate.toDateString() === day.toDateString();
-                }).length;
-                return (
-                  <div key={label + index} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ color: theme.textMuted, fontSize: '11px' }}>{value}</div>
-                    <div style={{ width: '100%', height: `${Math.max(18, value * 14 || 12)}px`, borderRadius: '8px 8px 0 0', background: theme.accent }} />
-                    <div style={{ color: theme.textMuted, fontSize: '11px' }}>{label}</div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div style={{ color: theme.textMuted, fontSize: '12px', padding: '40px 0', textAlign: 'center' }}>No scan data available yet.</div>
+          {scanHistory.length > 0 ? (() => {
+            const days = Array.from({ length: 7 }, (_, index) => {
+              const day = new Date();
+              day.setDate(day.getDate() - (6 - index));
+              const value = scanHistory.filter((event) => {
+                const eventDate = getScanDate(event);
+                return eventDate && eventDate.toDateString() === day.toDateString();
+              }).length;
+              return { label: day.toLocaleDateString('en-US', { weekday: 'short' }), value };
+            });
+            const maxValue = Math.max(...days.map((day) => day.value), 1);
+
+            return (
+              <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: '12px' }}>
+                {days.map(({ label, value }, index) => {
+                  const barColor = barColors[index % barColors.length];
+                  return (
+                    <div key={label + index} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', height: '100%' }}>
+                      <div style={{ color: theme.textMuted, fontSize: '11px' }}>{value}</div>
+                      <div style={{ flex: 1, minHeight: 0, width: '100%', display: 'flex', alignItems: 'flex-end' }}>
+                        <div style={{ width: '100%', height: `${value ? Math.max(8, (value / maxValue) * 100) : 4}%`, borderRadius: '8px 8px 0 0', background: `linear-gradient(180deg, ${barColor}, ${barColor}99)`, boxShadow: `0 0 16px ${barColor}40` }} />
+                      </div>
+                      <div style={{ color: theme.textMuted, fontSize: '11px' }}>{label}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })() : (
+            <div style={{ flex: 1, color: theme.textMuted, fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>No scan data available yet.</div>
           )}
         </div>
 
@@ -254,11 +324,11 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {attentionCount > 0 && (
+      {attentionMessage && (
         <div style={{ background: 'rgba(255,76,76,.08)', border: '1px solid rgba(255,76,76,.2)', borderRadius: '12px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          <div style={{ color: '#ff6b6b', fontSize: '13px', fontWeight: 700 }}>⚑ {attentionCount} item{attentionCount === 1 ? '' : 's'} need your attention</div>
-          <div style={{ color: theme.textMuted, fontSize: '11px' }}>{attentionParts.join(' · ')}</div>
-          <Link href="/admin/flagged" style={{ background: 'rgba(255,76,76,.15)', border: '1px solid rgba(255,76,76,.3)', borderRadius: '8px', padding: '6px 12px', color: '#ff6b6b', fontSize: '11px', textDecoration: 'none' }}>View flagged ›</Link>
+          <div style={{ color: '#ff6b6b', fontSize: '13px', fontWeight: 700 }}>⚑ Needs your attention</div>
+          <div style={{ color: theme.textMuted, fontSize: '11px' }}>{attentionMessage}</div>
+          <Link href="/admin/users" style={{ background: 'rgba(255,76,76,.15)', border: '1px solid rgba(255,76,76,.3)', borderRadius: '8px', padding: '6px 12px', color: '#ff6b6b', fontSize: '11px', textDecoration: 'none' }}>View users ›</Link>
         </div>
       )}
     </div>

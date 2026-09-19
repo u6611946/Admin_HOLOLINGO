@@ -7,27 +7,27 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function hasAdminAccount() {
-      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
-    }
-
+    // Single get() per check (not exists() + get()) — list queries evaluate this per candidate
+    // document, so halving the document-access count here matters for larger collections.
     function adminRole() {
-      return get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role;
+      return isSignedIn()
+        ? get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role
+        : null;
     }
 
     // Any signed-in admin-panel account (super_admin, admin, or viewer) — read access to admin data.
     function isPanelUser() {
-      return hasAdminAccount() && adminRole() in ['super_admin', 'admin', 'viewer'];
+      return adminRole() in ['super_admin', 'admin', 'viewer'];
     }
 
     // Can manage app content (users, scans, announcements, events) but not other admins or settings.
     function isModerator() {
-      return hasAdminAccount() && adminRole() in ['super_admin', 'admin'];
+      return adminRole() in ['super_admin', 'admin'];
     }
 
     // Full access: manage other admins and app-wide settings.
     function isSuperAdmin() {
-      return hasAdminAccount() && adminRole() == 'super_admin';
+      return adminRole() == 'super_admin';
     }
 
     function isOwner(userId) {

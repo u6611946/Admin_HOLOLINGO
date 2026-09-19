@@ -93,12 +93,20 @@ export default function PopularWordsPage() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', marginBottom: '24px' }}>
         {[
-          { label: 'Total searches', value: totalSearches.toLocaleString(), sub: 'all time' },
-          { label: 'Total saved', value: totalSaved.toLocaleString(), sub: 'by users' },
-          { label: 'Unique words', value: uniqueWords.toLocaleString(), sub: 'in database' },
+          { label: 'Total searches', value: totalSearches.toLocaleString(), sub: 'all time', color: '#ffc800' },
+          { label: 'Total saved', value: totalSaved.toLocaleString(), sub: 'by users', color: '#4ade80' },
+          { label: 'Unique words', value: uniqueWords.toLocaleString(), sub: 'in database', color: '#a78bfa' },
         ].map((item) => (
-          <div key={item.label} style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '12px', padding: '14px 16px' }}>
-            <div style={{ color: theme.accent, fontSize: '20px', fontWeight: 700 }}>{item.value}</div>
+          <div
+            key={item.label}
+            style={{
+              background: theme.mode === 'light' ? `linear-gradient(180deg, ${item.color}38, ${item.color}12)` : theme.bgCard,
+              border: `1px solid ${theme.mode === 'light' ? `${item.color}70` : theme.border}`,
+              borderRadius: '12px',
+              padding: '14px 16px',
+            }}
+          >
+            <div style={{ color: theme.mode === 'light' ? item.color : theme.accent, fontSize: '20px', fontWeight: 700 }}>{item.value}</div>
             <div style={{ color: theme.text, fontSize: '12px', marginTop: '2px' }}>{item.label}</div>
             <div style={{ color: theme.textMuted, fontSize: '10px', marginTop: '2px' }}>{item.sub}</div>
           </div>

@@ -19,6 +19,20 @@ function isExpired(data) {
   return Boolean(data.expiresAt) && new Date(data.expiresAt).getTime() < Date.now();
 }
 
+// Sends her to /login after she sets her password, instead of Firebase's generic confirmation page.
+// Falls back to the default link if the domain isn't in Firebase Auth's authorized domains list yet.
+async function buildPasswordResetLink(email, loginUrl) {
+  try {
+    return await adminAuth.generatePasswordResetLink(email, { url: loginUrl });
+  } catch (linkError) {
+    if (linkError.code === 'auth/unauthorized-continue-uri') {
+      console.warn(`${loginUrl} is not an authorized domain in Firebase Auth settings; falling back to the default reset link.`);
+      return adminAuth.generatePasswordResetLink(email);
+    }
+    throw linkError;
+  }
+}
+
 export async function GET(request) {
   try {
     await verifySuperAdmin(request);
@@ -92,9 +106,10 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Email, name, and a valid role are required.' }, { status: 400 });
     }
     if (!password || password.length < 6) {
-      return NextResponse.json({ error: 'A password of at least 6 characters is required.' }, { status: 400 });
+      return NextResponse.json({ error: 'Password must be at least 6 characters.' }, { status: 400 });
     }
 
+    // You set the password directly here and send it to her yourself — no setup link involved.
     const user = await adminAuth.createUser({
       email: normalizedEmail,
       password,
@@ -106,7 +121,6 @@ export async function POST(request) {
       name: normalizedName,
       role,
       invitedAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + INVITE_TTL_MS).toISOString(),
     });
 
     return NextResponse.json({ ok: true, uid: user.uid });
@@ -122,11 +136,11 @@ const ALLOWED_ROLES = ['super_admin', 'admin', 'viewer'];
 
 // Handles two independent updates, either or both at once:
 // - name/email/role: edit an admin's profile, accepted or not.
-// - password: regenerate the password and reset the 30-minute window for a pending (not-yet-accepted) invite.
+// - regenerateLink: issue a fresh setup link and reset the 30-minute window for a pending (not-yet-accepted) invite.
 export async function PATCH(request) {
   try {
     await verifySuperAdmin(request);
-    const { uid, name, email, role, password } = await request.json();
+    const { uid, name, email, role, regenerateLink } = await request.json();
     if (!uid) return NextResponse.json({ error: 'Admin UID is required.' }, { status: 400 });
 
     const adminRef = adminDb.collection('admins').doc(uid);
@@ -136,6 +150,7 @@ export async function PATCH(request) {
     const user = await adminAuth.getUser(uid);
     const authUpdates = {};
     const firestoreUpdates = {};
+    let targetEmail = user.email;
 
     if (typeof name === 'string' && name.trim()) {
       authUpdates.displayName = name.trim();
@@ -143,23 +158,19 @@ export async function PATCH(request) {
     }
 
     if (typeof email === 'string' && email.trim()) {
-      const normalizedEmail = email.trim().toLowerCase();
-      authUpdates.email = normalizedEmail;
-      firestoreUpdates.email = normalizedEmail;
+      targetEmail = email.trim().toLowerCase();
+      authUpdates.email = targetEmail;
+      firestoreUpdates.email = targetEmail;
     }
 
     if (typeof role === 'string' && ALLOWED_ROLES.includes(role)) {
       firestoreUpdates.role = role;
     }
 
-    if (password) {
+    if (regenerateLink) {
       if (user.metadata.lastSignInTime) {
         return NextResponse.json({ error: 'This admin has already signed in — nothing to reset.' }, { status: 409 });
       }
-      if (password.length < 6) {
-        return NextResponse.json({ error: 'A password of at least 6 characters is required.' }, { status: 400 });
-      }
-      authUpdates.password = password;
       authUpdates.disabled = false;
       firestoreUpdates.expiresAt = new Date(Date.now() + INVITE_TTL_MS).toISOString();
     }
@@ -171,7 +182,13 @@ export async function PATCH(request) {
       await adminRef.set(firestoreUpdates, { merge: true });
     }
 
-    return NextResponse.json({ ok: true });
+    let setupLink = null;
+    if (regenerateLink) {
+      const loginUrl = `${new URL(request.url).origin}/login`;
+      setupLink = await buildPasswordResetLink(targetEmail, loginUrl);
+    }
+
+    return NextResponse.json({ ok: true, setupLink });
   } catch (error) {
     if (error.code === 'auth/email-already-exists') {
       return NextResponse.json({ error: 'That email already has an account.' }, { status: 409 });
