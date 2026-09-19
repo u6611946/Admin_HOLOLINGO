@@ -49,6 +49,11 @@ const navItems = [
         label: 'Popular words',
       },
       {
+        href: '/admin/topics',
+        icon: '▤',
+        label: 'Topics',
+      },
+      {
         href: '/admin/announcements',
         icon: '꒰ ✉︎ ꒱',
         label: 'Announcements',
