@@ -467,6 +467,8 @@ export default function SettingsPage() {
     }
   };
 
+  const [showDefaultLanguage, setShowDefaultLanguage] = useState(false);
+
   const [adminCount, setAdminCount] = useState(0);
   const [admins, setAdmins] = useState([]);
   const [adminLoadError, setAdminLoadError] = useState('');
@@ -547,12 +549,19 @@ export default function SettingsPage() {
             <SettingRow theme={theme} label="Maintenance mode"      sub="Take app offline for all users" type="toggle" isOn={tog.maintenance}  onToggle={() => toggle('maintenance')} />
             <SettingRow theme={theme} label="New user registration" sub={!registrationLoaded ? 'Loading…' : isSuperAdmin ? 'Allow new sign-ups' : 'Allow new sign-ups (super admin only)'} type="toggle" isOn={registrationEnabled}  onToggle={isSuperAdmin ? toggleRegistration : undefined} />
             <SettingRow theme={theme} label="Force app update"      sub="Block old app versions"          type="toggle" isOn={tog.forceUpdate}   onToggle={() => toggle('forceUpdate')} />
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px'}}>
-              <div>
-                <div style={{color:theme.text,fontSize:'13px'}}>Default language for new users</div>
-                <div style={{color:theme.textMuted,fontSize:'10px',marginTop:'2px'}}>English (US)</div>
+            <div onClick={() => setShowDefaultLanguage((v) => !v)} style={{padding:'12px 16px',cursor:'pointer'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <div>
+                  <div style={{color:theme.text,fontSize:'13px'}}>Default language for new users</div>
+                  <div style={{color:theme.textMuted,fontSize:'10px',marginTop:'2px'}}>English (US)</div>
+                </div>
+                <span style={{color:theme.textFaint,fontSize:'16px',transform:showDefaultLanguage?'rotate(90deg)':'none',transition:'transform .15s'}}>›</span>
               </div>
-              <span style={{color:theme.textFaint,fontSize:'16px'}}>›</span>
+              {showDefaultLanguage && (
+                <div style={{marginTop:'10px',background:theme.bgInput,border:`1px solid ${theme.border}`,borderRadius:'8px',padding:'9px 12px',color:theme.text,fontSize:'12px'}}>
+                  English (US)
+                </div>
+              )}
             </div>
           </SettingSection>
 
