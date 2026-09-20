@@ -15,6 +15,8 @@ export default function CoinBattlePage() {
 
   const [battles, setBattles] = useState([]);
   const [loadError, setLoadError] = useState('');
+  const [userNames, setUserNames] = useState({});
+  const [search, setSearch] = useState('');
 
   const [coinFloor, setCoinFloor] = useState(String(DEFAULT_COIN_FLOOR));
   const [freeTopUp, setFreeTopUp] = useState(String(DEFAULT_FREE_TOP_UP));
@@ -26,13 +28,26 @@ export default function CoinBattlePage() {
     if (!db) return undefined;
 
     return onSnapshot(
-      collection(db, 'battles'),
+      collection(db, 'daily_battles'),
       (snapshot) => {
         setBattles(snapshot.docs.map((document) => ({ id: document.id, ...document.data() })));
         setLoadError('');
       },
-      (error) => setLoadError(`Unable to load battles: ${error.message}`),
+      (error) => setLoadError(`Unable to load daily_battles: ${error.message}`),
     );
+  }, []);
+
+  useEffect(() => {
+    if (!db) return undefined;
+
+    return onSnapshot(collection(db, 'users'), (snapshot) => {
+      const names = {};
+      snapshot.docs.forEach((document) => {
+        const data = document.data();
+        names[document.id] = data.name || data.displayName || data.email || 'Unknown player';
+      });
+      setUserNames(names);
+    });
   }, []);
 
   useEffect(() => {
@@ -46,10 +61,26 @@ export default function CoinBattlePage() {
     });
   }, []);
 
+  const nameFor = (uid) => userNames[uid] || (uid ? `${uid.slice(0, 6)}…` : '—');
+
+  const winnerInfo = (b) => {
+    if (b.result === 'player_a') return { label: nameFor(b.player_a_uid), color: '#4ade80' };
+    if (b.result === 'player_b') return { label: nameFor(b.player_b_uid), color: '#4ade80' };
+    if (b.result === 'draw') return { label: 'Draw', color: '#f59e0b' };
+    if (b.status !== 'resolved') return { label: '—', color: theme.textMuted };
+    return { label: b.result || '—', color: theme.textMuted };
+  };
+
   const resolved = battles.filter((b) => b.status === 'resolved');
   const active = battles.filter((b) => b.status === 'active');
   const totalWagered = resolved.reduce((sum, b) => sum + (Number(b.wager) || 0), 0);
   const draws = resolved.filter((b) => b.result === 'draw').length;
+
+  const filteredBattles = battles.filter((b) => {
+    const query = search.trim().toLowerCase();
+    if (!query) return true;
+    return nameFor(b.player_a_uid).toLowerCase().includes(query) || nameFor(b.player_b_uid).toLowerCase().includes(query);
+  });
 
   const handleSaveSettings = async () => {
     if (!db) return;
@@ -176,30 +207,41 @@ export default function CoinBattlePage() {
 
       <div style={{ color: theme.textStrong, fontSize: '14px', fontWeight: 700, marginBottom: '10px' }}>Recent battles</div>
 
+      <input
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        placeholder="Search by player name…"
+        style={{ width: '100%', boxSizing: 'border-box', background: theme.bgInput, border: `1px solid ${theme.border}`, borderRadius: '9px', padding: '9px 14px', color: theme.text, fontSize: '13px', outline: 'none', fontFamily: 'inherit', marginBottom: '16px' }}
+      />
+
       <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '14px', overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '10px', padding: '10px 16px', background: theme.bgInput }}>
-          {['Wager', 'Status', 'Result', 'Settled'].map((header) => (
+        <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr 1fr 1fr 1fr', gap: '10px', padding: '10px 16px', background: theme.bgInput }}>
+          {['Players', 'Wager', 'Status', 'Winner', 'Settled'].map((header) => (
             <div key={header} style={{ color: theme.textFaint, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '.07em' }}>{header}</div>
           ))}
         </div>
 
-        {battles.length === 0 ? (
+        {filteredBattles.length === 0 ? (
           <div style={{ padding: '28px 16px', color: theme.textMuted, fontSize: '12px', textAlign: 'center' }}>
-            No battles yet.
+            {battles.length === 0 ? 'No battles yet.' : 'No battles match that search.'}
           </div>
         ) : (
-          battles
+          filteredBattles
             .slice()
             .sort((a, b) => (b.created_at?.seconds || 0) - (a.created_at?.seconds || 0))
             .slice(0, 50)
-            .map((b) => (
-              <div key={b.id} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '10px', alignItems: 'center', padding: '12px 16px', borderTop: `1px solid ${theme.border}` }}>
-                <div style={{ color: theme.textStrong, fontSize: '13px', fontWeight: 600 }}>{b.wager ?? '—'}</div>
-                <div style={{ color: theme.text, fontSize: '12px', textTransform: 'capitalize' }}>{b.status || '—'}</div>
-                <div style={{ color: theme.textMuted, fontSize: '12px' }}>{b.result || '—'}</div>
-                <div style={{ color: theme.textMuted, fontSize: '12px' }}>{b.settled ? 'Yes' : 'No'}</div>
-              </div>
-            ))
+            .map((b) => {
+              const winner = winnerInfo(b);
+              return (
+                <div key={b.id} style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr 1fr 1fr 1fr', gap: '10px', alignItems: 'center', padding: '12px 16px', borderTop: `1px solid ${theme.border}` }}>
+                  <div style={{ color: theme.textStrong, fontSize: '13px', fontWeight: 600 }}>{nameFor(b.player_a_uid)} <span style={{ color: theme.textMuted, fontWeight: 400 }}>vs</span> {nameFor(b.player_b_uid)}</div>
+                  <div style={{ color: theme.text, fontSize: '13px' }}>{b.wager ?? '—'}</div>
+                  <div style={{ color: theme.text, fontSize: '12px', textTransform: 'capitalize' }}>{b.status || '—'}</div>
+                  <div style={{ color: winner.color, fontSize: '12px', fontWeight: 600 }}>{winner.label}</div>
+                  <div style={{ color: theme.textMuted, fontSize: '12px' }}>{b.settled ? 'Yes' : 'No'}</div>
+                </div>
+              );
+            })
         )}
       </div>
     </div>

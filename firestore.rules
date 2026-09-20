@@ -200,7 +200,7 @@ service cloud.firestore {
 
     // Written by the app during Coin Battle gameplay, not by the admin panel — read-only here
     // until a moderation/write feature for battles is built.
-    match /battles/{battleId} {
+    match /daily_battles/{battleId} {
       allow read: if isPanelUser();
       allow write: if false;
     }
