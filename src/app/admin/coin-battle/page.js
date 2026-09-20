@@ -104,13 +104,13 @@ export default function CoinBattlePage() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', marginBottom: '28px' }}>
         {[
-          { label: 'Total battles', value: battles.length.toLocaleString() },
-          { label: 'In progress', value: active.length.toLocaleString() },
-          { label: 'Coins wagered (resolved)', value: totalWagered.toLocaleString() },
-          { label: 'Draws', value: draws.toLocaleString() },
+          { label: 'Total battles', value: battles.length.toLocaleString(), color: theme.accent },
+          { label: 'In progress', value: active.length.toLocaleString(), color: '#4ade80' },
+          { label: 'Coins wagered (resolved)', value: totalWagered.toLocaleString(), color: '#f59e0b' },
+          { label: 'Draws', value: draws.toLocaleString(), color: '#a78bfa' },
         ].map((item) => (
-          <div key={item.label} style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '12px', padding: '14px 16px' }}>
-            <div style={{ color: theme.accent, fontSize: '20px', fontWeight: 700 }}>{item.value}</div>
+          <div key={item.label} style={{ background: `linear-gradient(160deg, ${item.color}1f 0%, ${theme.bgCard} 55%)`, border: `1px solid ${item.color}40`, borderRadius: '12px', padding: '14px 16px' }}>
+            <div style={{ color: item.color, fontSize: '20px', fontWeight: 700 }}>{item.value}</div>
             <div style={{ color: theme.text, fontSize: '12px', marginTop: '2px' }}>{item.label}</div>
           </div>
         ))}

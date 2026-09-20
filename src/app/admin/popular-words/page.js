@@ -100,13 +100,13 @@ export default function PopularWordsPage() {
           <div
             key={item.label}
             style={{
-              background: theme.mode === 'light' ? `linear-gradient(180deg, ${item.color}38, ${item.color}12)` : theme.bgCard,
-              border: `1px solid ${theme.mode === 'light' ? `${item.color}70` : theme.border}`,
+              background: `linear-gradient(160deg, ${item.color}1f 0%, ${theme.bgCard} 55%)`,
+              border: `1px solid ${item.color}40`,
               borderRadius: '12px',
               padding: '14px 16px',
             }}
           >
-            <div style={{ color: theme.mode === 'light' ? item.color : theme.accent, fontSize: '20px', fontWeight: 700 }}>{item.value}</div>
+            <div style={{ color: item.color, fontSize: '20px', fontWeight: 700 }}>{item.value}</div>
             <div style={{ color: theme.text, fontSize: '12px', marginTop: '2px' }}>{item.label}</div>
             <div style={{ color: theme.textMuted, fontSize: '10px', marginTop: '2px' }}>{item.sub}</div>
           </div>
