@@ -52,19 +52,9 @@ const slugify = (value) => value
   .replace(/[^a-z0-9]+/g, '_')
   .replace(/^_+|_+$/g, '');
 
-// One "word: definition" per line -> [{ word, definition }, ...], for the
-// event's theme vocabulary that Coin Battle mixes into its questions.
-const parseThemeWords = (text) => text
-  .split('\n')
-  .map((line) => {
-    const [word, ...rest] = line.split(':');
-    return { word: (word || '').trim(), definition: rest.join(':').trim() };
-  })
-  .filter((entry) => entry.word && entry.definition);
-
 export default function AnnouncementsPage() {
   const { theme } = useTheme();
-  const { isModerator } = useAdminRole();
+  const { isModerator, isSuperAdmin } = useAdminRole();
 
   const [announcements, setAnnouncements] = useState([]);
   const [events, setEvents] = useState([]);
@@ -79,7 +69,7 @@ export default function AnnouncementsPage() {
   const [saving, setSaving] = useState(false);
 
   const [showEventForm, setShowEventForm] = useState(false);
-  const [eventForm, setEventForm] = useState({ name: '', description: '', theme: '', startAt: '', endAt: '', rewardXp: '', rewardTokens: '', targetCount: '', themeWords: '' });
+  const [eventForm, setEventForm] = useState({ name: '', description: '', theme: '', startAt: '', endAt: '', rewardXp: '', rewardTokens: '', targetCount: '' });
   const [savingEvent, setSavingEvent] = useState(false);
   const [eventFormError, setEventFormError] = useState('');
 
@@ -88,6 +78,23 @@ export default function AnnouncementsPage() {
   const [savingDailyWords, setSavingDailyWords] = useState(false);
   const [dailyWordsError, setDailyWordsError] = useState('');
   const [dailyWordsSaved, setDailyWordsSaved] = useState(false);
+
+  const [tokenFloor, setTokenFloor] = useState('10');
+  const [freeTopUp, setFreeTopUp] = useState('75');
+  const [tokenSettingsLoaded, setTokenSettingsLoaded] = useState(false);
+  const [savingTokenSettings, setSavingTokenSettings] = useState(false);
+  const [tokenSettingsSaved, setTokenSettingsSaved] = useState(false);
+
+  useEffect(() => {
+    if (!db) return undefined;
+
+    return onSnapshot(doc(db, 'config', 'daily_challenge_settings'), (snapshot) => {
+      const data = snapshot.data();
+      setTokenFloor(String(data?.token_floor ?? 10));
+      setFreeTopUp(String(data?.free_top_up ?? 75));
+      setTokenSettingsLoaded(true);
+    });
+  }, []);
 
   useEffect(() => {
     if (!db) {
@@ -206,10 +213,9 @@ export default function AnnouncementsPage() {
         reward_xp: Number(eventForm.rewardXp) || 0,
         reward_tokens: Number(eventForm.rewardTokens) || 0,
         target_count: Number(eventForm.targetCount) || 0,
-        theme_words: parseThemeWords(eventForm.themeWords),
       });
 
-      setEventForm({ name: '', description: '', theme: '', startAt: '', endAt: '', rewardXp: '', rewardTokens: '', targetCount: '', themeWords: '' });
+      setEventForm({ name: '', description: '', theme: '', startAt: '', endAt: '', rewardXp: '', rewardTokens: '', targetCount: '' });
       setShowEventForm(false);
     } catch (error) {
       setEventFormError(error.message || 'Unable to create event.');
@@ -248,13 +254,37 @@ export default function AnnouncementsPage() {
     setDailyWordsSaved(false);
   };
 
+  const handleSaveTokenSettings = async () => {
+    if (!db) return;
+
+    const floorValue = Number(tokenFloor);
+    const topUpValue = Number(freeTopUp);
+
+    if (!Number.isFinite(floorValue) || floorValue < 0 || !Number.isFinite(topUpValue) || topUpValue < 0) {
+      return;
+    }
+
+    setSavingTokenSettings(true);
+    try {
+      await setDoc(
+        doc(db, 'config', 'daily_challenge_settings'),
+        { token_floor: Math.round(floorValue), free_top_up: Math.round(topUpValue) },
+        { merge: true },
+      );
+      setTokenSettingsSaved(true);
+      setTimeout(() => setTokenSettingsSaved(false), 1500);
+    } finally {
+      setSavingTokenSettings(false);
+    }
+  };
+
   const handleSaveDailyWords = async () => {
     if (!db || !dailyWordsEventId) return;
 
     const lines = dailyWordsText.split('\n').map((l) => l.trim()).filter(Boolean);
 
-    if (lines.length !== 10) {
-      setDailyWordsError(`Need exactly 10 lines, got ${lines.length}.`);
+    if (lines.length !== 20) {
+      setDailyWordsError(`Need exactly 20 lines, got ${lines.length}.`);
       return;
     }
 
@@ -714,6 +744,60 @@ export default function AnnouncementsPage() {
         )}
       </div>
 
+      <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '14px', padding: '16px 18px', marginBottom: '20px' }}>
+        <div style={{ color: theme.textStrong, fontSize: '13px', fontWeight: 700, marginBottom: '4px' }}>Daily Challenge token economy</div>
+        <div style={{ color: theme.textMuted, fontSize: '11px', marginBottom: '14px' }}>
+          token_floor is baked into each new battle so a losing streak can never fully wipe someone out.
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px', opacity: tokenSettingsLoaded ? 1 : 0.5 }}>
+          <div>
+            <div style={{ color: theme.textMuted, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '6px' }}>Token floor</div>
+            <input
+              type="number"
+              min="0"
+              style={inputStyle}
+              value={tokenFloor}
+              disabled={!isSuperAdmin}
+              onChange={(e) => setTokenFloor(e.target.value)}
+            />
+          </div>
+          <div>
+            <div style={{ color: theme.textMuted, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '6px' }}>Free top-up per event</div>
+            <input
+              type="number"
+              min="0"
+              style={inputStyle}
+              value={freeTopUp}
+              disabled={!isSuperAdmin}
+              onChange={(e) => setFreeTopUp(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {isSuperAdmin ? (
+          <button
+            onClick={handleSaveTokenSettings}
+            disabled={savingTokenSettings || !tokenSettingsLoaded}
+            style={{
+              padding: '9px 18px',
+              borderRadius: '8px',
+              border: `1px solid ${tokenSettingsSaved ? 'rgba(74,222,128,.35)' : theme.accentBorder}`,
+              background: tokenSettingsSaved ? 'rgba(74,222,128,.1)' : theme.accentBg,
+              color: tokenSettingsSaved ? '#4ade80' : theme.accent,
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              opacity: savingTokenSettings ? 0.7 : 1,
+            }}
+          >
+            {savingTokenSettings ? 'Saving…' : tokenSettingsSaved ? '✓ Saved' : 'Save settings'}
+          </button>
+        ) : (
+          <div style={{ color: theme.textMuted, fontSize: '11px' }}>Only a super admin can change these settings.</div>
+        )}
+      </div>
+
       {showEventForm && (
         <div style={{ background: theme.bgCard, border: `1px solid ${theme.accentBorder}`, borderRadius: '14px', padding: '18px', marginBottom: '20px', maxWidth: '640px' }}>
           <div style={{ color: theme.accent, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: '14px' }}>New event</div>
@@ -755,22 +839,6 @@ export default function AnnouncementsPage() {
             <div>
               <div style={{ color: theme.textMuted, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '6px' }}>Reward tokens</div>
               <input type="number" min="0" style={inputStyle} value={eventForm.rewardTokens} onChange={(e) => setEventForm((p) => ({ ...p, rewardTokens: e.target.value }))} placeholder="50" />
-            </div>
-          </div>
-
-          <div style={{ marginBottom: '16px' }}>
-            <div style={{ color: theme.textMuted, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '6px' }}>
-              Theme words (Coin Battle) — one per line, &ldquo;word: definition&rdquo;
-            </div>
-            <textarea
-              rows={4}
-              style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
-              value={eventForm.themeWords}
-              onChange={(e) => setEventForm((p) => ({ ...p, themeWords: e.target.value }))}
-              placeholder={'Snowman: A figure made of packed snow\nOrnament: A decoration hung on a tree\nSleigh: A vehicle pulled over snow'}
-            />
-            <div style={{ color: theme.textMuted, fontSize: '10px', marginTop: '4px' }}>
-              Mixed into players&apos; own saved words when they battle during this event — optional, leave blank for none.
             </div>
           </div>
 
@@ -848,14 +916,14 @@ export default function AnnouncementsPage() {
                 {dailyWordsEventId === event.id && (
                   <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: `1px solid ${theme.border}` }}>
                     <div style={{ color: theme.textMuted, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '6px' }}>
-                      Daily Challenge — 10 lines, &ldquo;thai|correct|wrong1|wrong2|wrong3&rdquo; (sets today&apos;s, {todayKeyUtc()})
+                      Daily Challenge — 20 lines, &ldquo;thai|correct|wrong1|wrong2|wrong3&rdquo; (sets today&apos;s pool, {todayKeyUtc()}) — each match randomly draws 10 of these 20
                     </div>
                     <textarea
-                      rows={10}
+                      rows={20}
                       style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace', fontSize: '12px' }}
                       value={dailyWordsText}
                       onChange={(e) => setDailyWordsText(e.target.value)}
-                      placeholder={'แมว|Cat|Dog|Bird|Fish\nสุนัข|Dog|Cat|Horse|Cow\n… (10 lines total)'}
+                      placeholder={'แมว|Cat|Dog|Bird|Fish\nสุนัข|Dog|Cat|Horse|Cow\n… (20 lines total)'}
                     />
                     {dailyWordsError && (
                       <div style={{ color: theme.danger, fontSize: '11px', marginTop: '8px' }}>{dailyWordsError}</div>

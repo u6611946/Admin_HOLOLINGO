@@ -61,11 +61,6 @@ const navItems = [
         label: 'Subscription',
       },
       {
-        href: '/admin/coin-battle',
-        icon: '⛁',
-        label: 'Coin Battle',
-      },
-      {
         href: '/admin/gobot',
         icon: 'robot',
         label: 'Gobot AI',
