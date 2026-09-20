@@ -41,9 +41,9 @@ export default function FeedbackPage() {
         const data = document.data();
         return {
           id: document.id,
-          user: data.name || data.user || data.userName || data.displayName || 'ผู้ใช้',
+          user: data.name || data.user || data.userName || data.displayName || data.email || 'ผู้ใช้',
           message: data.message || data.body || data.comment || data.text || data.thaiMessage || 'ไม่มีข้อความ',
-          date: formatFeedbackDate(data.createdAt || data.created || data.date || data.timestamp),
+          date: formatFeedbackDate(data.created_at || data.createdAt || data.created || data.date || data.timestamp),
         };
       });
 

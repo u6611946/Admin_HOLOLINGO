@@ -192,5 +192,17 @@ service cloud.firestore {
       allow read: if isPanelUser();
       allow write: if isModerator();
     }
+
+    match /topics/{topicId} {
+      allow read: if isPanelUser();
+      allow write: if isModerator();
+    }
+
+    // Written by the app during Coin Battle gameplay, not by the admin panel — read-only here
+    // until a moderation/write feature for battles is built.
+    match /daily_battles/{battleId} {
+      allow read: if isPanelUser();
+      allow write: if false;
+    }
   }
 }

@@ -236,6 +236,20 @@ export default function UsersPage() {
         <div style={{color:theme.textMuted,fontSize:'11px',marginTop:'2px'}}>{userList.length} users</div>
       </div>
 
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3, 1fr)',gap:'14px',marginBottom:'20px'}}>
+        {[
+          { label: 'Total users', value: userList.length, sub: 'all accounts', color: theme.accent },
+          { label: 'Online now', value: userList.filter((u) => u.statusLabel === 'Online').length, sub: 'active heartbeat', color: '#4ade80' },
+          { label: 'Suspended', value: userList.filter((u) => u.statusLabel === 'Suspended').length, sub: 'disabled accounts', color: theme.danger },
+        ].map((s) => (
+          <div key={s.label} style={{background:`linear-gradient(160deg, ${s.color}1f 0%, ${theme.bgCard} 55%)`,border:`1px solid ${s.color}40`,borderRadius:'12px',padding:'14px 16px'}}>
+            <div style={{color:s.color,fontSize:'20px',fontWeight:700}}>{s.value}</div>
+            <div style={{color:theme.text,fontSize:'12px',marginTop:'2px'}}>{s.label}</div>
+            <div style={{color:theme.textMuted,fontSize:'10px',marginTop:'2px'}}>{s.sub}</div>
+          </div>
+        ))}
+      </div>
+
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}}>
         <div style={{background:theme.bgCard,border:`1px solid ${theme.border}`,borderRadius:'10px',padding:'7px 12px',display:'flex',alignItems:'center',gap:'8px'}}>
           <span style={{color:theme.textMuted}}>⌕</span>
