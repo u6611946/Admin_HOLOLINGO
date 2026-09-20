@@ -71,12 +71,12 @@ export default function SubscriptionPage() {
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', marginBottom: '24px' }}>
             {[
-              { label: 'Monthly revenue', value: '—', sub: 'from Firestore' },
-              { label: 'Active subscribers', value: String(subs.filter((s) => (s.status || '').toLowerCase() === 'active').length), sub: 'premium + annual' },
-              { label: 'Churn rate', value: '—', sub: 'from Firestore' },
+              { label: 'Monthly revenue', value: '—', sub: 'from Firestore', color: theme.accent },
+              { label: 'Active subscribers', value: String(subs.filter((s) => (s.status || '').toLowerCase() === 'active').length), sub: 'premium + annual', color: '#4ade80' },
+              { label: 'Churn rate', value: '—', sub: 'from Firestore', color: theme.danger },
             ].map((s) => (
-              <div key={s.label} style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '12px', padding: '14px 16px' }}>
-                <div style={{ color: theme.accent, fontSize: '20px', fontWeight: 700 }}>{s.value}</div>
+              <div key={s.label} style={{ background: `linear-gradient(160deg, ${s.color}1f 0%, ${theme.bgCard} 55%)`, border: `1px solid ${s.color}40`, borderRadius: '12px', padding: '14px 16px' }}>
+                <div style={{ color: s.color, fontSize: '20px', fontWeight: 700 }}>{s.value}</div>
                 <div style={{ color: theme.text, fontSize: '12px', marginTop: '2px' }}>{s.label}</div>
                 <div style={{ color: theme.textMuted, fontSize: '10px', marginTop: '2px' }}>{s.sub}</div>
               </div>
@@ -87,7 +87,7 @@ export default function SubscriptionPage() {
             {plans.map((p) => {
               const c = planColor[p.accentKey];
               return (
-                <div key={p.id} style={{ background: theme.bgCard, border: `1px solid ${c}30`, borderRadius: '14px', padding: '18px', position: 'relative', overflow: 'hidden' }}>
+                <div key={p.id} style={{ background: `linear-gradient(160deg, ${c}1f 0%, ${theme.bgCard} 55%)`, border: `1px solid ${c}40`, borderRadius: '14px', padding: '18px', position: 'relative', overflow: 'hidden' }}>
                   <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: c }} />
                   <div style={{ color: c, fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: '8px' }}>{p.name}</div>
                   <div style={{ color: theme.textStrong, fontSize: '22px', fontWeight: 700 }}>{p.price}</div>
