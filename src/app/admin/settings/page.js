@@ -55,14 +55,14 @@ function SetupLinkCard({ theme, email, link }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // Clipboard API unavailable — she can still select and copy the text manually.
+      // Clipboard API unavailable — the text can still be selected and copied manually.
     }
   };
 
   return (
     <div>
       <div style={{color:theme.textMuted,fontSize:'11px',marginBottom:'16px'}}>
-        Send this link to her yourself — she uses it to set her own password, which you never see. It expires in 30 minutes if she doesn&apos;t sign in.
+        Send this link to them yourself — they&apos;ll use it to set their own password, which you never see. It expires in 30 minutes if unused.
       </div>
       <div style={{marginBottom:'10px'}}>
         <div style={{color:theme.accent,fontSize:'10px',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'4px'}}>Email</div>
@@ -88,7 +88,7 @@ function CredentialsCard({ theme, email, name, password }) {
       setCopiedField(field);
       setTimeout(() => setCopiedField((current) => (current === field ? null : current)), 1500);
     } catch {
-      // Clipboard API unavailable — she can still select and copy the text manually.
+      // Clipboard API unavailable — the text can still be selected and copied manually.
     }
   };
 
@@ -101,7 +101,7 @@ function CredentialsCard({ theme, email, name, password }) {
   return (
     <div>
       <div style={{color:theme.textMuted,fontSize:'11px',marginBottom:'16px'}}>
-        Copy these and send them to her yourself, however you&apos;d like. This is the only time the password is shown.
+        Copy these and send them to the new admin yourself, however you&apos;d like. This is the only time the password is shown.
       </div>
       {rows.map((row, index) => (
         <div key={row.field} style={{marginBottom: index === rows.length - 1 ? '6px' : '10px'}}>
@@ -169,7 +169,7 @@ function AddAdminModal({ onClose, onAdd, theme }) {
           </div>
           <div>
             <div style={{color:theme.textStrong,fontSize:'15px',fontWeight:600}}>{created ? 'Admin created' : 'Add new admin'}</div>
-            {!created && <div style={{color:theme.textMuted,fontSize:'11px',marginTop:'2px'}}>Set her login here — no email sent automatically</div>}
+            {!created && <div style={{color:theme.textMuted,fontSize:'11px',marginTop:'2px'}}>Set their login here — no email sent automatically</div>}
           </div>
           <button onClick={onClose} style={{marginLeft:'auto',background:'none',border:'none',color:theme.textMuted,fontSize:'20px',cursor:'pointer',lineHeight:1}}>×</button>
         </div>
@@ -234,7 +234,7 @@ function AddAdminModal({ onClose, onAdd, theme }) {
                 onChange={e => setForm(p => ({...p, password: e.target.value}))}
                 style={{width:'100%',background:theme.bgInput,border:`1px solid ${theme.border}`,borderRadius:'8px',padding:'9px 12px',color:theme.text,fontSize:'13px',outline:'none',boxSizing:'border-box',fontFamily:'monospace'}}
               />
-              <div style={{color:theme.textMuted,fontSize:'10px',marginTop:'8px'}}>She can sign in with this right away. You&apos;ll send her the name and password yourself — nothing is emailed automatically.</div>
+              <div style={{color:theme.textMuted,fontSize:'10px',marginTop:'8px'}}>They can sign in with this right away. You&apos;ll need to share the name and password with them yourself — nothing is emailed automatically.</div>
             </div>
 
             {error && <div style={{color:theme.danger,fontSize:'11px',marginBottom:'12px'}}>{error}</div>}
@@ -375,7 +375,7 @@ function EditAdminModal({ theme, admin, onClose }) {
             style={{width:'100%',background:theme.bgInput,border:`1px solid ${theme.border}`,borderRadius:'8px',padding:'9px 12px',color:theme.text,fontSize:'13px',outline:'none',boxSizing:'border-box'}}
           />
           {admin.status === 'Accepted' && (
-            <div style={{color:theme.textMuted,fontSize:'10px',marginTop:'6px'}}>She&apos;s already signed in — changing this means she&apos;ll need to use the new email next time.</div>
+            <div style={{color:theme.textMuted,fontSize:'10px',marginTop:'6px'}}>This admin has already signed in — changing this means they&apos;ll need to use the new email next time.</div>
           )}
         </div>
 
