@@ -46,6 +46,11 @@ const navItems = [
         label: 'Popular words',
       },
       {
+        href: '/admin/topics',
+        icon: '▤',
+        label: 'Topics',
+      },
+      {
         href: '/admin/announcements',
         icon: '꒰ ✉︎ ꒱',
         label: 'Announcements',
@@ -54,6 +59,11 @@ const navItems = [
         href: '/admin/subscription',
         icon: '◉',
         label: 'Subscription',
+      },
+      {
+        href: '/admin/coin-battle',
+        icon: '⛁',
+        label: 'Coin Battle',
       },
       {
         href: '/admin/gobot',

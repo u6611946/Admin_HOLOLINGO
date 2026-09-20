@@ -52,6 +52,16 @@ const slugify = (value) => value
   .replace(/[^a-z0-9]+/g, '_')
   .replace(/^_+|_+$/g, '');
 
+// One "word: definition" per line -> [{ word, definition }, ...], for the
+// event's theme vocabulary that Coin Battle mixes into its questions.
+const parseThemeWords = (text) => text
+  .split('\n')
+  .map((line) => {
+    const [word, ...rest] = line.split(':');
+    return { word: (word || '').trim(), definition: rest.join(':').trim() };
+  })
+  .filter((entry) => entry.word && entry.definition);
+
 export default function AnnouncementsPage() {
   const { theme } = useTheme();
   const { isModerator } = useAdminRole();
@@ -69,9 +79,15 @@ export default function AnnouncementsPage() {
   const [saving, setSaving] = useState(false);
 
   const [showEventForm, setShowEventForm] = useState(false);
-  const [eventForm, setEventForm] = useState({ name: '', description: '', theme: '', startAt: '', endAt: '', rewardXp: '', rewardTokens: '', targetCount: '' });
+  const [eventForm, setEventForm] = useState({ name: '', description: '', theme: '', startAt: '', endAt: '', rewardXp: '', rewardTokens: '', targetCount: '', themeWords: '' });
   const [savingEvent, setSavingEvent] = useState(false);
   const [eventFormError, setEventFormError] = useState('');
+
+  const [dailyWordsEventId, setDailyWordsEventId] = useState(null);
+  const [dailyWordsText, setDailyWordsText] = useState('');
+  const [savingDailyWords, setSavingDailyWords] = useState(false);
+  const [dailyWordsError, setDailyWordsError] = useState('');
+  const [dailyWordsSaved, setDailyWordsSaved] = useState(false);
 
   useEffect(() => {
     if (!db) {
@@ -190,9 +206,10 @@ export default function AnnouncementsPage() {
         reward_xp: Number(eventForm.rewardXp) || 0,
         reward_tokens: Number(eventForm.rewardTokens) || 0,
         target_count: Number(eventForm.targetCount) || 0,
+        theme_words: parseThemeWords(eventForm.themeWords),
       });
 
-      setEventForm({ name: '', description: '', theme: '', startAt: '', endAt: '', rewardXp: '', rewardTokens: '', targetCount: '' });
+      setEventForm({ name: '', description: '', theme: '', startAt: '', endAt: '', rewardXp: '', rewardTokens: '', targetCount: '', themeWords: '' });
       setShowEventForm(false);
     } catch (error) {
       setEventFormError(error.message || 'Unable to create event.');
@@ -204,6 +221,72 @@ export default function AnnouncementsPage() {
   const deleteEvent = async (id) => {
     if (!db || !id) return;
     await deleteDoc(doc(db, 'events', id));
+  };
+
+  // Matches DailyBattleService.todayKey() in the app — UTC calendar day.
+  const todayKeyUtc = () => {
+    const now = new Date();
+    const y = now.getUTCFullYear();
+    const m = String(now.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(now.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  const shuffle = (array) => {
+    const copy = [...array];
+    for (let i = copy.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy;
+  };
+
+  const openDailyWordsEditor = (eventId) => {
+    setDailyWordsEventId(eventId);
+    setDailyWordsText('');
+    setDailyWordsError('');
+    setDailyWordsSaved(false);
+  };
+
+  const handleSaveDailyWords = async () => {
+    if (!db || !dailyWordsEventId) return;
+
+    const lines = dailyWordsText.split('\n').map((l) => l.trim()).filter(Boolean);
+
+    if (lines.length !== 10) {
+      setDailyWordsError(`Need exactly 10 lines, got ${lines.length}.`);
+      return;
+    }
+
+    const parsed = [];
+    for (const line of lines) {
+      const parts = line.split('|').map((p) => p.trim());
+      if (parts.length !== 5 || parts.some((p) => !p)) {
+        setDailyWordsError(`Each line needs 5 parts separated by "|": ${line}`);
+        return;
+      }
+      const [thai, correct, wrong1, wrong2, wrong3] = parts;
+      const options = shuffle([correct, wrong1, wrong2, wrong3]);
+      parsed.push({ thai, options, correct_index: options.indexOf(correct) });
+    }
+
+    setSavingDailyWords(true);
+    setDailyWordsError('');
+
+    try {
+      const date = todayKeyUtc();
+      await Promise.all(
+        parsed.map((word, index) =>
+          setDoc(doc(db, 'events', dailyWordsEventId, 'daily_challenges', date, 'words', String(index)), word),
+        ),
+      );
+      setDailyWordsSaved(true);
+      setTimeout(() => setDailyWordsSaved(false), 1500);
+    } catch (error) {
+      setDailyWordsError(error.message || 'Unable to save today’s words.');
+    } finally {
+      setSavingDailyWords(false);
+    }
   };
 
   const inputStyle = {
@@ -675,6 +758,22 @@ export default function AnnouncementsPage() {
             </div>
           </div>
 
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ color: theme.textMuted, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '6px' }}>
+              Theme words (Coin Battle) — one per line, &ldquo;word: definition&rdquo;
+            </div>
+            <textarea
+              rows={4}
+              style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
+              value={eventForm.themeWords}
+              onChange={(e) => setEventForm((p) => ({ ...p, themeWords: e.target.value }))}
+              placeholder={'Snowman: A figure made of packed snow\nOrnament: A decoration hung on a tree\nSleigh: A vehicle pulled over snow'}
+            />
+            <div style={{ color: theme.textMuted, fontSize: '10px', marginTop: '4px' }}>
+              Mixed into players&apos; own saved words when they battle during this event — optional, leave blank for none.
+            </div>
+          </div>
+
           {eventFormError && <div style={{ color: theme.danger, fontSize: '11px', marginBottom: '12px' }}>{eventFormError}</div>}
 
           <div style={{ display: 'flex', gap: '10px' }}>
@@ -729,14 +828,55 @@ export default function AnnouncementsPage() {
                   </div>
 
                   {isModerator && (
-                    <button
-                      onClick={() => deleteEvent(event.id)}
-                      style={{ padding: '6px 12px', borderRadius: '7px', border: `1px solid ${theme.dangerMuted}`, background: 'rgba(255,76,76,.06)', color: theme.danger, fontSize: '11px', cursor: 'pointer', flexShrink: 0 }}
-                    >
-                      Delete
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                      <button
+                        onClick={() => openDailyWordsEditor(event.id)}
+                        style={{ padding: '6px 12px', borderRadius: '7px', border: `1px solid ${theme.accentBorder}`, background: theme.accentBg, color: theme.accent, fontSize: '11px', cursor: 'pointer' }}
+                      >
+                        Today&apos;s words
+                      </button>
+                      <button
+                        onClick={() => deleteEvent(event.id)}
+                        style={{ padding: '6px 12px', borderRadius: '7px', border: `1px solid ${theme.dangerMuted}`, background: 'rgba(255,76,76,.06)', color: theme.danger, fontSize: '11px', cursor: 'pointer' }}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   )}
                 </div>
+
+                {dailyWordsEventId === event.id && (
+                  <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: `1px solid ${theme.border}` }}>
+                    <div style={{ color: theme.textMuted, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '6px' }}>
+                      Daily Challenge — 10 lines, &ldquo;thai|correct|wrong1|wrong2|wrong3&rdquo; (sets today&apos;s, {todayKeyUtc()})
+                    </div>
+                    <textarea
+                      rows={10}
+                      style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace', fontSize: '12px' }}
+                      value={dailyWordsText}
+                      onChange={(e) => setDailyWordsText(e.target.value)}
+                      placeholder={'แมว|Cat|Dog|Bird|Fish\nสุนัข|Dog|Cat|Horse|Cow\n… (10 lines total)'}
+                    />
+                    {dailyWordsError && (
+                      <div style={{ color: theme.danger, fontSize: '11px', marginTop: '8px' }}>{dailyWordsError}</div>
+                    )}
+                    <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                      <button
+                        onClick={() => setDailyWordsEventId(null)}
+                        style={{ flex: 1, padding: '9px', borderRadius: '8px', border: `1px solid ${theme.border}`, background: 'transparent', color: theme.textMuted, fontSize: '13px', cursor: 'pointer' }}
+                      >
+                        Close
+                      </button>
+                      <button
+                        onClick={handleSaveDailyWords}
+                        disabled={savingDailyWords}
+                        style={{ flex: 2, padding: '9px', borderRadius: '8px', border: `1px solid ${dailyWordsSaved ? 'rgba(74,222,128,.35)' : theme.accentBorder}`, background: dailyWordsSaved ? 'rgba(74,222,128,.1)' : theme.accentBg, color: dailyWordsSaved ? '#4ade80' : theme.accent, fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: savingDailyWords ? 0.7 : 1 }}
+                      >
+                        {savingDailyWords ? 'Saving…' : dailyWordsSaved ? '✓ Saved' : "Save today's words"}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })
