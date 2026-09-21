@@ -17,6 +17,7 @@ const wordCardColors = ['#ffc800', '#4ade80', '#a78bfa'];
 const barColors = ['#ffc800', '#4ade80', '#a78bfa', '#00e5ff', '#ff8fa3', '#ff9f43', '#5b9dff'];
 
 const periodColors = { week: '#ffc800', month: '#4ade80', year: '#a78bfa' };
+const growthPeriodLabels = { week: 'Last 4 weeks', month: 'Last 12 months', year: 'Last 5 years' };
 
 const asDate = (value) => {
   if (!value) return null;
@@ -51,6 +52,7 @@ export default function DashboardPage() {
   const { theme } = useTheme();
   const [period, setPeriod] = useState('week');
   const [growthPeriod, setGrowthPeriod] = useState('week');
+  const [growthMenuOpen, setGrowthMenuOpen] = useState(false);
   const [dashboardUsers, setDashboardUsers] = useState([]);
   const [authUsers, setAuthUsers] = useState({});
   const [scanHistory, setScanHistory] = useState([]);
@@ -406,9 +408,12 @@ export default function DashboardPage() {
           </div>
 
           <div style={{ position: 'relative', display: 'inline-block', marginBottom: '20px' }}>
-            <select
-              value={growthPeriod}
-              onChange={(e) => setGrowthPeriod(e.target.value)}
+            {growthMenuOpen && (
+              <div onClick={() => setGrowthMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 20 }} />
+            )}
+
+            <button
+              onClick={() => setGrowthMenuOpen((open) => !open)}
               style={{
                 padding: '8px 30px 8px 14px',
                 borderRadius: '8px',
@@ -419,28 +424,67 @@ export default function DashboardPage() {
                 fontWeight: 700,
                 cursor: 'pointer',
                 outline: 'none',
-                appearance: 'none',
-                WebkitAppearance: 'none',
+                position: 'relative',
                 transition: 'all .15s',
               }}
             >
-              <option value="week">Last 4 weeks</option>
-              <option value="month">Last 12 months</option>
-              <option value="year">Last 5 years</option>
-            </select>
-            <span
-              style={{
-                position: 'absolute',
-                top: '50%',
-                right: '12px',
-                transform: 'translateY(-50%)',
-                pointerEvents: 'none',
-                fontSize: '9px',
-                color: periodColors[growthPeriod],
-              }}
-            >
-              ▾
-            </span>
+              {growthPeriodLabels[growthPeriod]}
+              <span
+                style={{
+                  position: 'absolute',
+                  top: '50%',
+                  right: '12px',
+                  transform: growthMenuOpen ? 'translateY(-50%) rotate(180deg)' : 'translateY(-50%)',
+                  fontSize: '9px',
+                  transition: 'transform .15s',
+                }}
+              >
+                ▾
+              </span>
+            </button>
+
+            {growthMenuOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 6px)',
+                  left: 0,
+                  minWidth: '160px',
+                  padding: '4px',
+                  background: theme.bgCard,
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: '10px',
+                  boxShadow: theme.mode === 'dark' ? '0 12px 30px rgba(0,0,0,.5)' : '0 12px 30px rgba(0,0,0,.15)',
+                  zIndex: 21,
+                }}
+              >
+                {['week', 'month', 'year'].map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => {
+                      setGrowthPeriod(p);
+                      setGrowthMenuOpen(false);
+                    }}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      padding: '9px 10px',
+                      border: 'none',
+                      borderRadius: '6px',
+                      background: growthPeriod === p ? `${periodColors[p]}18` : 'transparent',
+                      color: growthPeriod === p ? periodColors[p] : theme.text,
+                      textAlign: 'left',
+                      fontSize: '12px',
+                      fontWeight: growthPeriod === p ? 700 : 500,
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    {growthPeriod === p ? '✓ ' : '   '}{growthPeriodLabels[p]}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', gap: newUsersChartData.length > 6 ? '6px' : '22px' }}>
