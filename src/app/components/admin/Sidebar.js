@@ -33,11 +33,6 @@ const navItems = [
         icon: '◈',
         label: 'Feedback',
       },
-      {
-        href: '/admin/reports',
-        icon: '⚠',
-        label: 'Reports',
-      },
     ],
   },
   {

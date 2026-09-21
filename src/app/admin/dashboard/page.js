@@ -4,7 +4,7 @@ import StatCard from '../../components/admin/StatCard';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useTheme } from '../../ThemeContext';
-import { collection, collectionGroup, doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { collection, collectionGroup, onSnapshot } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../../../lib/firebase';
 
@@ -44,7 +44,6 @@ const isSameMonth = (date, reference) => Boolean(date) && date.getFullYear() ===
 const getWordKey = (event) => event?.word || event?.wordText || event?.term || event?.label || null;
 const getScanDate = (event) => asDate(event.created_at || event.timestamp || event.createdAt || event.date);
 const getUserDate = (user) => asDate(user.createdAt || user.created_at || user.joinedAt || user.joined_at);
-const getReportDate = (report) => asDate(report.created_at || report.createdAt || report.created || report.date || report.timestamp);
 
 const periodDays = { week: 7, month: 30, year: 365 };
 
@@ -56,10 +55,8 @@ export default function DashboardPage() {
   const [authUsers, setAuthUsers] = useState({});
   const [scanHistory, setScanHistory] = useState([]);
   const [gobotMessages, setGobotMessages] = useState([]);
-  const [flaggedReports, setFlaggedReports] = useState([]);
   const [loadError, setLoadError] = useState('');
   const [tick, setTick] = useState(() => Date.now());
-  const [updatingReportId, setUpdatingReportId] = useState(null);
 
   // Online/offline is time-based (a stale heartbeat), so it needs to re-evaluate even when
   // no new Firestore data arrives.
@@ -104,15 +101,10 @@ export default function DashboardPage() {
       setLoadError((current) => current || `Unable to load chat_history: ${error.message}`);
     });
 
-    const flaggedUnsub = onSnapshot(collection(db, 'flagged'), (snapshot) => {
-      setFlaggedReports(snapshot.docs.map((document) => ({ id: document.id, ...document.data() })));
-    });
-
     return () => {
       usersUnsub();
       scansUnsub();
       gobotUnsub();
-      flaggedUnsub();
     };
   }, []);
 
@@ -242,33 +234,6 @@ export default function DashboardPage() {
         statusColor,
       };
     });
-
-  const reportStatusColors = { pending: '#ffc800', reviewed: '#4ade80', resolved: '#4ade80', dismissed: '#8a97a3' };
-  const recentReports = [...flaggedReports]
-    .sort((a, b) => (getReportDate(b)?.getTime() || 0) - (getReportDate(a)?.getTime() || 0))
-    .slice(0, 5)
-    .map((report) => {
-      const status = (report.status || 'pending').toLowerCase();
-      return {
-        id: report.id,
-        reporter: report.reporterName || report.reporter || report.name || report.userName || report.displayName || report.email || 'Unnamed user',
-        reason: report.reason || report.category || report.type || 'Not specified',
-        status,
-        statusColor: reportStatusColors[status] || '#8a97a3',
-      };
-    });
-
-  const setReportStatus = async (id, status) => {
-    if (!db) return;
-    setUpdatingReportId(id);
-    try {
-      await updateDoc(doc(db, 'flagged', id), { status });
-    } catch {
-      // Firestore rules reject unauthorized changes — the snapshot listener keeps the UI in sync either way.
-    } finally {
-      setUpdatingReportId(null);
-    }
-  };
 
   return (
     <div style={{ padding: '24px' }}>
@@ -496,76 +461,29 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-        <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '14px', padding: '18px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-            <div style={{ color: theme.textStrong, fontSize: '13px', fontWeight: 700 }}>Recent users</div>
-            <Link href="/admin/users" style={{ color: theme.accent, fontSize: '11px', textDecoration: 'none' }}>See all ›</Link>
-          </div>
+      <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '14px', padding: '18px', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+          <div style={{ color: theme.textStrong, fontSize: '13px', fontWeight: 700 }}>Recent users</div>
+          <Link href="/admin/users" style={{ color: theme.accent, fontSize: '11px', textDecoration: 'none' }}>See all ›</Link>
+        </div>
 
-          {recentUsers.map((user) => (
-            <div key={user.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 0', borderBottom: `1px solid ${theme.border}` }}>
-              <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: user.bg, color: user.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, flexShrink: 0 }}>
-                {user.initial}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ color: theme.text, fontSize: '12px', fontWeight: 600 }}>{user.name}</div>
-                <div style={{ color: theme.textMuted, fontSize: '10px' }}>{user.loc}</div>
-              </div>
-              <div style={{ display: 'flex', gap: '4px' }}>
-                {user.langs.map((language) => (
-                  <span key={language} style={{ background: `${langColors[language] || '#00e5ff'}18`, color: langColors[language] || '#00e5ff', border: `1px solid ${(langColors[language] || '#00e5ff')}33`, borderRadius: '4px', padding: '1px 6px', fontSize: '8px', fontWeight: 600 }}>{language}</span>
-                ))}
-              </div>
-              <span style={{ background: `${user.statusColor}18`, color: user.statusColor, border: `1px solid ${user.statusColor}33`, borderRadius: '10px', padding: '2px 8px', fontSize: '9px' }}>{user.status}</span>
+        {recentUsers.map((user) => (
+          <div key={user.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 0', borderBottom: `1px solid ${theme.border}` }}>
+            <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: user.bg, color: user.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, flexShrink: 0 }}>
+              {user.initial}
             </div>
-          ))}
-        </div>
-
-        <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '14px', padding: '18px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-            <div style={{ color: theme.textStrong, fontSize: '13px', fontWeight: 700 }}>Recent reports</div>
-            <Link href="/admin/reports" style={{ color: theme.accent, fontSize: '11px', textDecoration: 'none' }}>See all ›</Link>
+            <div style={{ flex: 1 }}>
+              <div style={{ color: theme.text, fontSize: '12px', fontWeight: 600 }}>{user.name}</div>
+              <div style={{ color: theme.textMuted, fontSize: '10px' }}>{user.loc}</div>
+            </div>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              {user.langs.map((language) => (
+                <span key={language} style={{ background: `${langColors[language] || '#00e5ff'}18`, color: langColors[language] || '#00e5ff', border: `1px solid ${(langColors[language] || '#00e5ff')}33`, borderRadius: '4px', padding: '1px 6px', fontSize: '8px', fontWeight: 600 }}>{language}</span>
+              ))}
+            </div>
+            <span style={{ background: `${user.statusColor}18`, color: user.statusColor, border: `1px solid ${user.statusColor}33`, borderRadius: '10px', padding: '2px 8px', fontSize: '9px' }}>{user.status}</span>
           </div>
-
-          {recentReports.length > 0 ? (
-            recentReports.map((report) => (
-              <div key={report.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 0', borderBottom: `1px solid ${theme.border}` }}>
-                <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(255,107,107,.12)', color: '#ff6b6b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, flexShrink: 0 }}>
-                  {report.reporter.charAt(0).toUpperCase()}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ color: theme.text, fontSize: '12px', fontWeight: 600 }}>{report.reporter}</div>
-                  <div style={{ color: theme.textMuted, fontSize: '10px' }}>{report.reason}</div>
-                </div>
-                {report.status === 'pending' ? (
-                  <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                    <button
-                      title="Resolve"
-                      onClick={() => setReportStatus(report.id, 'resolved')}
-                      disabled={updatingReportId === report.id}
-                      style={{ width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(74,222,128,.10)', border: '1px solid rgba(74,222,128,.25)', borderRadius: '6px', color: '#4ade80', fontSize: '11px', cursor: 'pointer', opacity: updatingReportId === report.id ? 0.6 : 1 }}
-                    >
-                      ✓
-                    </button>
-                    <button
-                      title="Dismiss"
-                      onClick={() => setReportStatus(report.id, 'dismissed')}
-                      disabled={updatingReportId === report.id}
-                      style={{ width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: theme.bgInput, border: `1px solid ${theme.border}`, borderRadius: '6px', color: theme.textMuted, fontSize: '11px', cursor: 'pointer', opacity: updatingReportId === report.id ? 0.6 : 1 }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ) : (
-                  <span style={{ background: `${report.statusColor}18`, color: report.statusColor, border: `1px solid ${report.statusColor}33`, borderRadius: '10px', padding: '2px 8px', fontSize: '9px', textTransform: 'capitalize', flexShrink: 0 }}>{report.status}</span>
-                )}
-              </div>
-            ))
-          ) : (
-            <div style={{ color: theme.textMuted, fontSize: '12px', padding: '12px 0' }}>No reports yet.</div>
-          )}
-        </div>
+        ))}
       </div>
 
       {attentionMessage && (

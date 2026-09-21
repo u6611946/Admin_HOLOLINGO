@@ -171,13 +171,11 @@ service cloud.firestore {
       allow write: if isModerator();
     }
 
-    // Not created by the app yet (no flagging feature built) — moderators can still update
-    // status on existing docs (e.g. seeded/test reports) so the admin panel's actions work.
+    // Not written by the app yet (no flagging/feedback/billing feature built) — read-only
+    // placeholders for the admin panel until those features exist. Tighten write once they do.
     match /flagged/{id} {
       allow read: if isPanelUser();
-      allow create: if false;
-      allow update: if isModerator();
-      allow delete: if false;
+      allow write: if false;
     }
 
     match /feedback/{id} {
