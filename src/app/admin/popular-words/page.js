@@ -131,7 +131,7 @@ export default function PopularWordsPage() {
       <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '14px', overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1fr 1fr 1fr', gap: '10px', padding: '10px 16px', background: theme.bgInput }}>
           {['Word', 'Definition', 'Searches', 'Saved', 'Last scanned'].map((header) => (
-            <div key={header} style={{ color: theme.textFaint, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '.07em' }}>{header}</div>
+            <div key={header} style={{ color: theme.textFaint, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '.07em', textAlign: header === 'Searches' ? 'center' : 'left' }}>{header}</div>
           ))}
         </div>
 
@@ -142,7 +142,7 @@ export default function PopularWordsPage() {
             <div key={word.id} style={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1fr 1fr 1fr', gap: '10px', alignItems: 'center', padding: '12px 16px', borderTop: `1px solid ${theme.border}` }}>
               <div style={{ color: theme.textStrong, fontSize: '13px', fontWeight: 600 }}>{word.word}</div>
               <div style={{ color: theme.textMuted, fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{word.definition || '—'}</div>
-              <div style={{ color: theme.text, fontSize: '13px' }}>{word.searches.toLocaleString()}</div>
+              <div style={{ color: theme.text, fontSize: '13px', textAlign: 'center' }}>{word.searches.toLocaleString()}</div>
               <div style={{ color: theme.text, fontSize: '13px' }}>{word.saved.toLocaleString()}</div>
               <div style={{ color: theme.textMuted, fontSize: '12px' }}>{word.lastScannedAt ? word.lastScannedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}</div>
             </div>

@@ -16,7 +16,6 @@ const navItems = [
     color: '#a78bfa',
     items: [
       { href: '/admin/dashboard', icon: '⊞', label: 'Dashboard' },
-      { href: '/admin/analytics', icon: '◷', label: 'Reports' },
     ],
   },
   {
@@ -33,6 +32,11 @@ const navItems = [
         href: '/admin/feedback',
         icon: '◈',
         label: 'Feedback',
+      },
+      {
+        href: '/admin/reports',
+        icon: '⚠',
+        label: 'Reports',
       },
     ],
   },
@@ -64,6 +68,11 @@ const navItems = [
         href: '/admin/gobot',
         icon: 'robot',
         label: 'Gobot AI',
+      },
+      {
+        href: '/admin/coin-battle',
+        icon: '⛁',
+        label: 'Token Battle',
       },
     ],
   },

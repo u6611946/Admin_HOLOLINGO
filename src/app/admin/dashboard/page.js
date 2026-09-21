@@ -2,8 +2,9 @@
 import { useEffect, useState } from 'react';
 import StatCard from '../../components/admin/StatCard';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useTheme } from '../../ThemeContext';
-import { collection, collectionGroup, onSnapshot } from 'firebase/firestore';
+import { collection, collectionGroup, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../../../lib/firebase';
 
@@ -38,20 +39,27 @@ const isWithinDays = (date, days) => {
   return date >= cutoff;
 };
 
+const isSameMonth = (date, reference) => Boolean(date) && date.getFullYear() === reference.getFullYear() && date.getMonth() === reference.getMonth();
+
 const getWordKey = (event) => event?.word || event?.wordText || event?.term || event?.label || null;
 const getScanDate = (event) => asDate(event.created_at || event.timestamp || event.createdAt || event.date);
+const getUserDate = (user) => asDate(user.createdAt || user.created_at || user.joinedAt || user.joined_at);
+const getReportDate = (report) => asDate(report.created_at || report.createdAt || report.created || report.date || report.timestamp);
 
 const periodDays = { week: 7, month: 30, year: 365 };
 
 export default function DashboardPage() {
   const { theme } = useTheme();
   const [period, setPeriod] = useState('week');
+  const [growthPeriod, setGrowthPeriod] = useState('week');
   const [dashboardUsers, setDashboardUsers] = useState([]);
   const [authUsers, setAuthUsers] = useState({});
   const [scanHistory, setScanHistory] = useState([]);
   const [gobotMessages, setGobotMessages] = useState([]);
+  const [flaggedReports, setFlaggedReports] = useState([]);
   const [loadError, setLoadError] = useState('');
   const [tick, setTick] = useState(() => Date.now());
+  const [updatingReportId, setUpdatingReportId] = useState(null);
 
   // Online/offline is time-based (a stale heartbeat), so it needs to re-evaluate even when
   // no new Firestore data arrives.
@@ -96,10 +104,15 @@ export default function DashboardPage() {
       setLoadError((current) => current || `Unable to load chat_history: ${error.message}`);
     });
 
+    const flaggedUnsub = onSnapshot(collection(db, 'flagged'), (snapshot) => {
+      setFlaggedReports(snapshot.docs.map((document) => ({ id: document.id, ...document.data() })));
+    });
+
     return () => {
       usersUnsub();
       scansUnsub();
       gobotUnsub();
+      flaggedUnsub();
     };
   }, []);
 
@@ -130,7 +143,7 @@ export default function DashboardPage() {
     if (!date) return earliest;
     return !earliest || date < earliest ? date : earliest;
   }, null);
-  const historyDays = earliestScanDate ? (Date.now() - earliestScanDate.getTime()) / 86400000 : 0;
+  const historyDays = earliestScanDate ? (tick - earliestScanDate.getTime()) / 86400000 : 0;
   const hasFullPeriodHistory = historyDays >= periodDays[period];
 
   const popularWordCounts = hasFullPeriodHistory ? scansInPeriod.reduce((counts, event) => {
@@ -153,6 +166,61 @@ export default function DashboardPage() {
       meaning: word.definition || 'No definition recorded',
     }));
 
+  const now = new Date();
+  const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const usersThisMonth = dashboardUsers.filter((user) => isSameMonth(getUserDate(user), now)).length;
+  const usersLastMonth = dashboardUsers.filter((user) => isSameMonth(getUserDate(user), lastMonthDate)).length;
+  const monthlyGrowthUp = usersThisMonth >= usersLastMonth;
+  const monthlyGrowthPct = usersLastMonth
+    ? Math.abs(Math.round(((usersThisMonth - usersLastMonth) / usersLastMonth) * 100))
+    : null;
+  const monthlyGrowthLabel = monthlyGrowthPct !== null
+    ? `${monthlyGrowthUp ? '▲' : '▼'} ${monthlyGrowthPct}% vs last month`
+    : usersThisMonth
+    ? '▲ New vs last month'
+    : 'No change vs last month';
+
+  const scansThisWeek = scanHistory.filter((event) => isWithinDays(getScanDate(event), 7)).length;
+  const gobotChatsThisWeek = gobotMessages.filter((message) => isWithinDays(getScanDate(message), 7)).length;
+
+  const weeklyUsersChartData = Array.from({ length: 4 }, (_, index) => {
+    const weeksAgo = 3 - index;
+    const start = new Date();
+    start.setDate(start.getDate() - (weeksAgo + 1) * 7);
+    const end = new Date();
+    end.setDate(end.getDate() - weeksAgo * 7);
+    const count = dashboardUsers.filter((user) => {
+      const date = getUserDate(user);
+      return date && date > start && date <= end;
+    }).length;
+    return { w: `W${index + 1}`, v: count };
+  });
+
+  const monthlyUsersChartData = Array.from({ length: 12 }, (_, index) => {
+    const monthDate = new Date(now.getFullYear(), now.getMonth() - (11 - index), 1);
+    const count = dashboardUsers.filter((user) => isSameMonth(getUserDate(user), monthDate)).length;
+    return { w: monthDate.toLocaleDateString('en-US', { month: 'short' }), v: count };
+  });
+
+  const yearlyUsersChartData = Array.from({ length: 5 }, (_, index) => {
+    const year = now.getFullYear() - (4 - index);
+    const count = dashboardUsers.filter((user) => getUserDate(user)?.getFullYear() === year).length;
+    return { w: String(year), v: count };
+  });
+
+  const newUsersChartData = growthPeriod === 'month' ? monthlyUsersChartData : growthPeriod === 'year' ? yearlyUsersChartData : weeklyUsersChartData;
+  const newUsersChartMax = Math.max(1, ...newUsersChartData.map((b) => b.v));
+  const newUsersChartTitle = growthPeriod === 'month' ? 'New users per month (12 months)' : growthPeriod === 'year' ? 'New users per year (5 years)' : 'New users per week (4 weeks)';
+
+  const scanShare = scansThisWeek + gobotChatsThisWeek
+    ? Math.round((scansThisWeek / (scansThisWeek + gobotChatsThisWeek)) * 100)
+    : 0;
+
+  const featureUsage = [
+    { label: 'AR Scan used', pct: scanShare, color: theme.accent },
+    { label: 'Gobot AI', pct: 100 - scanShare, color: '#00e5ff' },
+  ];
+
   const recentUsers = [...dashboardUsers]
     .sort((a, b) => (getLastSeen(b)?.getTime() || 0) - (getLastSeen(a)?.getTime() || 0))
     .slice(0, 5)
@@ -163,6 +231,7 @@ export default function DashboardPage() {
       const statusLabel = suspended ? 'Suspended' : online ? 'Online' : 'Offline';
       const statusColor = suspended ? '#ff6b6b' : online ? '#4ade80' : '#8a97a3';
       return {
+        id: user.id,
         initial: name.charAt(0).toUpperCase(),
         color: online && !suspended ? theme.accent : '#ff6b6b',
         bg: online && !suspended ? theme.accentBg : 'rgba(255,107,107,.12)',
@@ -173,6 +242,33 @@ export default function DashboardPage() {
         statusColor,
       };
     });
+
+  const reportStatusColors = { pending: '#ffc800', reviewed: '#4ade80', resolved: '#4ade80', dismissed: '#8a97a3' };
+  const recentReports = [...flaggedReports]
+    .sort((a, b) => (getReportDate(b)?.getTime() || 0) - (getReportDate(a)?.getTime() || 0))
+    .slice(0, 5)
+    .map((report) => {
+      const status = (report.status || 'pending').toLowerCase();
+      return {
+        id: report.id,
+        reporter: report.reporterName || report.reporter || report.name || report.userName || report.displayName || report.email || 'Unnamed user',
+        reason: report.reason || report.category || report.type || 'Not specified',
+        status,
+        statusColor: reportStatusColors[status] || '#8a97a3',
+      };
+    });
+
+  const setReportStatus = async (id, status) => {
+    if (!db) return;
+    setUpdatingReportId(id);
+    try {
+      await updateDoc(doc(db, 'flagged', id), { status });
+    } catch {
+      // Firestore rules reject unauthorized changes — the snapshot listener keeps the UI in sync either way.
+    } finally {
+      setUpdatingReportId(null);
+    }
+  };
 
   return (
     <div style={{ padding: '24px' }}>
@@ -192,11 +288,37 @@ export default function DashboardPage() {
         <StatCard icon="◉" num={activeToday.toLocaleString()} label="Active today" color="#4ade80" />
         <StatCard icon="☷" num={wordsScannedToday.toLocaleString()} label="Words scanned today" color="#a78bfa" />
         <StatCard
-          icon={<img src="/robot 1.png" alt="robot" style={{ width: '18px', height: '18px', objectFit: 'contain' }} />}
+          icon={<Image src="/robot 1.png" alt="robot" width={18} height={18} style={{ objectFit: 'contain' }} />}
           num={gobotChatsToday.toLocaleString()}
           label="Gobot chats today"
           color="#00e5ff"
         />
+      </div>
+
+      <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '14px', padding: '18px', marginBottom: '16px' }}>
+        <div style={{ color: theme.textStrong, fontSize: '13px', fontWeight: 700, marginBottom: '14px' }}>Feature usage (last 7 days)</div>
+
+        {scansThisWeek + gobotChatsThisWeek > 0 ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: '10px' }}>
+            {featureUsage.map((f) => (
+              <div
+                key={f.label}
+                style={{
+                  background: theme.mode === 'light' ? `linear-gradient(180deg, ${f.color}30, ${f.color}10)` : `${f.color}14`,
+                  border: `1px solid ${f.color}${theme.mode === 'light' ? '55' : '30'}`,
+                  borderRadius: '10px',
+                  padding: '12px',
+                  textAlign: 'center',
+                }}
+              >
+                <div style={{ color: f.color, fontSize: '18px', fontWeight: 700 }}>{f.pct}%</div>
+                <div style={{ color: theme.textMuted, fontSize: '10px', marginTop: '4px' }}>{f.label}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ color: theme.textMuted, fontSize: '12px', padding: '12px 0' }}>No activity data yet.</div>
+        )}
       </div>
 
       <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '14px', padding: '18px', marginBottom: '20px' }}>
@@ -297,6 +419,84 @@ export default function DashboardPage() {
           )}
         </div>
 
+        <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '16px', padding: '20px', minHeight: '420px', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '14px' }}>
+            <div style={{ color: theme.textStrong, fontSize: '13px', fontWeight: 700 }}>{newUsersChartTitle}</div>
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 10px',
+                borderRadius: '999px',
+                fontSize: '11px',
+                fontWeight: 700,
+                background: monthlyGrowthUp ? 'rgba(74,222,128,.10)' : 'rgba(255,107,107,.10)',
+                border: monthlyGrowthUp ? '1px solid rgba(74,222,128,.18)' : '1px solid rgba(255,107,107,.18)',
+                color: monthlyGrowthUp ? '#4ade80' : theme.danger,
+              }}
+            >
+              {monthlyGrowthLabel}
+            </div>
+          </div>
+
+          <div style={{ position: 'relative', display: 'inline-block', marginBottom: '20px' }}>
+            <select
+              value={growthPeriod}
+              onChange={(e) => setGrowthPeriod(e.target.value)}
+              style={{
+                padding: '8px 30px 8px 14px',
+                borderRadius: '8px',
+                border: `1px solid ${periodColors[growthPeriod]}`,
+                background: `${periodColors[growthPeriod]}14`,
+                color: periodColors[growthPeriod],
+                fontSize: '12px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                outline: 'none',
+                appearance: 'none',
+                WebkitAppearance: 'none',
+                transition: 'all .15s',
+              }}
+            >
+              <option value="week">Last 4 weeks</option>
+              <option value="month">Last 12 months</option>
+              <option value="year">Last 5 years</option>
+            </select>
+            <span
+              style={{
+                position: 'absolute',
+                top: '50%',
+                right: '12px',
+                transform: 'translateY(-50%)',
+                pointerEvents: 'none',
+                fontSize: '9px',
+                color: periodColors[growthPeriod],
+              }}
+            >
+              ▾
+            </span>
+          </div>
+
+          <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', gap: newUsersChartData.length > 6 ? '6px' : '22px' }}>
+            {newUsersChartData.map((b, index) => {
+              const height = Math.round((b.v / newUsersChartMax) * 100);
+              const barColor = barColors[index % barColors.length];
+              return (
+                <div key={b.w} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%' }}>
+                  <div style={{ marginBottom: '10px', fontSize: newUsersChartData.length > 6 ? '11px' : '14px', fontWeight: 700, color: barColor }}>{b.v}</div>
+                  <div style={{ flex: 1, minHeight: 0, width: '100%', display: 'flex', alignItems: 'flex-end' }}>
+                    <div style={{ width: '100%', height: `${b.v ? Math.max(8, height) : 4}%`, borderRadius: '10px 10px 0 0', background: `linear-gradient(180deg, ${barColor}, ${barColor}99)`, boxShadow: `0 0 16px ${barColor}40` }} />
+                  </div>
+                  <div style={{ marginTop: '12px', color: theme.textMuted, fontSize: newUsersChartData.length > 6 ? '10px' : '12px' }}>{b.w}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
         <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '14px', padding: '18px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
             <div style={{ color: theme.textStrong, fontSize: '13px', fontWeight: 700 }}>Recent users</div>
@@ -304,7 +504,7 @@ export default function DashboardPage() {
           </div>
 
           {recentUsers.map((user) => (
-            <div key={user.name} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 0', borderBottom: `1px solid ${theme.border}` }}>
+            <div key={user.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 0', borderBottom: `1px solid ${theme.border}` }}>
               <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: user.bg, color: user.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, flexShrink: 0 }}>
                 {user.initial}
               </div>
@@ -320,6 +520,51 @@ export default function DashboardPage() {
               <span style={{ background: `${user.statusColor}18`, color: user.statusColor, border: `1px solid ${user.statusColor}33`, borderRadius: '10px', padding: '2px 8px', fontSize: '9px' }}>{user.status}</span>
             </div>
           ))}
+        </div>
+
+        <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '14px', padding: '18px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+            <div style={{ color: theme.textStrong, fontSize: '13px', fontWeight: 700 }}>Recent reports</div>
+            <Link href="/admin/reports" style={{ color: theme.accent, fontSize: '11px', textDecoration: 'none' }}>See all ›</Link>
+          </div>
+
+          {recentReports.length > 0 ? (
+            recentReports.map((report) => (
+              <div key={report.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 0', borderBottom: `1px solid ${theme.border}` }}>
+                <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(255,107,107,.12)', color: '#ff6b6b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, flexShrink: 0 }}>
+                  {report.reporter.charAt(0).toUpperCase()}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ color: theme.text, fontSize: '12px', fontWeight: 600 }}>{report.reporter}</div>
+                  <div style={{ color: theme.textMuted, fontSize: '10px' }}>{report.reason}</div>
+                </div>
+                {report.status === 'pending' ? (
+                  <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                    <button
+                      title="Resolve"
+                      onClick={() => setReportStatus(report.id, 'resolved')}
+                      disabled={updatingReportId === report.id}
+                      style={{ width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(74,222,128,.10)', border: '1px solid rgba(74,222,128,.25)', borderRadius: '6px', color: '#4ade80', fontSize: '11px', cursor: 'pointer', opacity: updatingReportId === report.id ? 0.6 : 1 }}
+                    >
+                      ✓
+                    </button>
+                    <button
+                      title="Dismiss"
+                      onClick={() => setReportStatus(report.id, 'dismissed')}
+                      disabled={updatingReportId === report.id}
+                      style={{ width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: theme.bgInput, border: `1px solid ${theme.border}`, borderRadius: '6px', color: theme.textMuted, fontSize: '11px', cursor: 'pointer', opacity: updatingReportId === report.id ? 0.6 : 1 }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <span style={{ background: `${report.statusColor}18`, color: report.statusColor, border: `1px solid ${report.statusColor}33`, borderRadius: '10px', padding: '2px 8px', fontSize: '9px', textTransform: 'capitalize', flexShrink: 0 }}>{report.status}</span>
+                )}
+              </div>
+            ))
+          ) : (
+            <div style={{ color: theme.textMuted, fontSize: '12px', padding: '12px 0' }}>No reports yet.</div>
+          )}
         </div>
       </div>
 
