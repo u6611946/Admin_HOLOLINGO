@@ -204,6 +204,11 @@ export default function AnnouncementsPage() {
         eventId = `${eventId}_${Date.now().toString(36)}`;
       }
 
+      // merge: true so a slugified name that happens to collide with an
+      // existing event's id (e.g. a new event named "Winter Wonderland
+      // Test") updates that event's fields instead of wiping out
+      // everything else on it (active, type, event_id, etc.) that this
+      // form doesn't know about.
       await setDoc(doc(db, 'events', eventId), {
         name: eventForm.name.trim(),
         description: eventForm.description.trim(),
@@ -213,7 +218,7 @@ export default function AnnouncementsPage() {
         reward_xp: Number(eventForm.rewardXp) || 0,
         reward_tokens: Number(eventForm.rewardTokens) || 0,
         target_count: Number(eventForm.targetCount) || 0,
-      });
+      }, { merge: true });
 
       setEventForm({ name: '', description: '', theme: '', startAt: '', endAt: '', rewardXp: '', rewardTokens: '', targetCount: '' });
       setShowEventForm(false);
