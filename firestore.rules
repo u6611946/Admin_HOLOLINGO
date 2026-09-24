@@ -188,6 +188,16 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Not written by the app yet (no billing feature built) — read-only placeholder for the
+    // admin panel until payment integration exists. Intended to record every purchase (topic
+    // premium plan or token package) so support/admin can see what a user actually bought:
+    // { userId, type: 'topic_premium' | 'token_package', packageId, amountBaht, tokens?, purchasedAt, status }.
+    // Should be written server-side only (after payment verification), never directly by the client.
+    match /purchases/{id} {
+      allow read: if isPanelUser();
+      allow write: if false;
+    }
+
     match /words/{wordId} {
       allow read: if isPanelUser();
       allow write: if isModerator();

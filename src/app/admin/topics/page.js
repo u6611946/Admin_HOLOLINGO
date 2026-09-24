@@ -57,6 +57,7 @@ export default function TopicsPage() {
 
   const [topics, setTopics] = useState([]);
   const [loadError, setLoadError] = useState('');
+  const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -189,6 +190,9 @@ export default function TopicsPage() {
     boxSizing: 'border-box',
   };
 
+  const searchQuery = search.trim().toLowerCase();
+  const filteredTopics = searchQuery ? topics.filter((topic) => (topic.name || '').toLowerCase().includes(searchQuery)) : topics;
+
   const labelStyle = {
     color: theme.textMuted,
     fontSize: '10px',
@@ -234,6 +238,16 @@ export default function TopicsPage() {
           {loadError}
         </div>
       )}
+
+      <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '10px', padding: '7px 12px', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+        <span style={{ color: theme.textMuted }}>⌕</span>
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search topics…"
+          style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: theme.text, fontSize: '13px', fontFamily: 'inherit' }}
+        />
+      </div>
 
       {showForm && (
         <div style={{ background: theme.bgCard, border: `1px solid ${theme.accentBorder}`, borderRadius: '14px', padding: '18px', marginBottom: '20px' }}>
@@ -354,12 +368,12 @@ export default function TopicsPage() {
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {topics.length === 0 ? (
+        {filteredTopics.length === 0 ? (
           <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '12px', padding: '24px 16px', color: theme.textMuted, fontSize: '12px', textAlign: 'center' }}>
-            No topics yet. Add one to publish it to the app.
+            {topics.length === 0 ? 'No topics yet. Add one to publish it to the app.' : 'No topics match your search.'}
           </div>
         ) : (
-          topics.map((topic) => (
+          filteredTopics.map((topic) => (
             <div key={topic.id} style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '12px', padding: '14px 16px' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
                 <div style={{ display: 'flex', gap: '12px', flex: 1 }}>

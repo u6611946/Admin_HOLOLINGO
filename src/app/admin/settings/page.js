@@ -437,7 +437,7 @@ export default function SettingsPage() {
   const { isSuperAdmin, loading: roleLoading } = useAdminRole();
 
   const [tog, setTog] = useState({
-    maintenance:false, forceUpdate:false,
+    maintenance:false,
   });
   const toggle = key => setTog(prev => ({...prev, [key]: !prev[key]}));
 
@@ -548,7 +548,6 @@ export default function SettingsPage() {
             <SettingRow theme={theme} label="App name" sub="Hololingo v1.0.0" />
             <SettingRow theme={theme} label="Maintenance mode"      sub="Take app offline for all users" type="toggle" isOn={tog.maintenance}  onToggle={() => toggle('maintenance')} />
             <SettingRow theme={theme} label="New user registration" sub={!registrationLoaded ? 'Loading…' : isSuperAdmin ? 'Allow new sign-ups' : 'Allow new sign-ups (super admin only)'} type="toggle" isOn={registrationEnabled}  onToggle={isSuperAdmin ? toggleRegistration : undefined} />
-            <SettingRow theme={theme} label="Force app update"      sub="Block old app versions"          type="toggle" isOn={tog.forceUpdate}   onToggle={() => toggle('forceUpdate')} />
             <div onClick={() => setShowDefaultLanguage((v) => !v)} style={{padding:'12px 16px',cursor:'pointer'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div>
@@ -562,17 +561,6 @@ export default function SettingsPage() {
                   English (US)
                 </div>
               )}
-            </div>
-          </SettingSection>
-
-          <SettingSection title="AR & detection" theme={theme}>
-            <SettingRow theme={theme} label="AR confidence threshold" sub="Min score to show label: 0.82" />
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px'}}>
-              <div>
-                <div style={{color:theme.text,fontSize:'13px'}}>Fallback message on detection fail</div>
-                <div style={{color:theme.textMuted,fontSize:'10px',marginTop:'2px'}}>&quot;Point at a clear object&quot;</div>
-              </div>
-              <span style={{color:theme.textFaint,fontSize:'16px'}}>›</span>
             </div>
           </SettingSection>
 

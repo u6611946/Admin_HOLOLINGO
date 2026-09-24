@@ -94,13 +94,32 @@ const ThemeContext = createContext({
   toggleMode: () => {},
 });
 
+const THEME_STORAGE_KEY = 'hololingo-admin-theme';
+
 export function ThemeProvider({ children, defaultMode = 'dark' }) {
   const [mode, setMode] = useState(defaultMode);
 
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(THEME_STORAGE_KEY);
+      if (saved === 'dark' || saved === 'light') {
+        setMode(saved);
+      }
+    } catch {
+      // localStorage unavailable (private mode, SSR, etc.) — keep defaultMode
+    }
+  }, []);
+
   const toggleMode = () => {
-    setMode(current =>
-      current === 'dark' ? 'light' : 'dark'
-    );
+    setMode(current => {
+      const next = current === 'dark' ? 'light' : 'dark';
+      try {
+        window.localStorage.setItem(THEME_STORAGE_KEY, next);
+      } catch {
+        // localStorage unavailable — theme just won't persist
+      }
+      return next;
+    });
   };
 
   const theme = themes[mode];
