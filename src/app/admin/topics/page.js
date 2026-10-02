@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, setDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { useTheme } from '../../ThemeContext';
 import { useAdminRole } from '../../../lib/useAdminRole';
@@ -40,6 +40,10 @@ const slugify = (value) => value
   .replace(/[^a-z0-9]+/g, '_')
   .replace(/^_+|_+$/g, '');
 
+// Drafts live in their own collection so the app (which reads `topics`) never sees them.
+// A draft whose id matches a published topic holds unpublished changes to that topic.
+const DRAFTS = 'topic_drafts';
+
 const emptyForm = {
   name: '',
   icon: ICON_OPTIONS[0].key,
@@ -56,18 +60,21 @@ export default function TopicsPage() {
   const { isModerator } = useAdminRole();
 
   const [topics, setTopics] = useState([]);
+  const [drafts, setDrafts] = useState([]);
   const [loadError, setLoadError] = useState('');
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [previewId, setPreviewId] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState(null);
   const [formError, setFormError] = useState('');
 
   useEffect(() => {
     if (!db) return undefined;
 
-    const unsubscribe = onSnapshot(
+    const unsubscribeTopics = onSnapshot(
       query(collection(db, 'topics'), orderBy('order', 'asc')),
       (snapshot) => {
         setTopics(snapshot.docs.map((document) => ({ id: document.id, ...document.data() })));
@@ -76,7 +83,16 @@ export default function TopicsPage() {
       (error) => setLoadError(`Unable to load topics: ${error.message}`),
     );
 
-    return unsubscribe;
+    const unsubscribeDrafts = onSnapshot(
+      query(collection(db, DRAFTS), orderBy('order', 'asc')),
+      (snapshot) => setDrafts(snapshot.docs.map((document) => ({ id: document.id, ...document.data() }))),
+      (error) => setLoadError(`Unable to load drafts: ${error.message}`),
+    );
+
+    return () => {
+      unsubscribeTopics();
+      unsubscribeDrafts();
+    };
   }, []);
 
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
@@ -100,8 +116,10 @@ export default function TopicsPage() {
     setShowForm(true);
   };
 
-  const startEdit = (topic) => {
-    setEditingId(topic.id);
+  // For a published topic with pending changes, edit the draft rather than the live version.
+  const startEdit = (item) => {
+    const topic = item.draft || item;
+    setEditingId(item.id);
     setForm({
       name: topic.name || '',
       icon: topic.icon || ICON_OPTIONS[0].key,
@@ -123,7 +141,13 @@ export default function TopicsPage() {
     setFormError('');
   };
 
-  const handleSave = async () => {
+  const publishedIds = new Set(topics.map((t) => t.id));
+  const draftsById = Object.fromEntries(drafts.map((d) => [d.id, d]));
+
+  // Strip admin-only and UI-only fields so they never reach the stored doc.
+  const toPublished = ({ id, updated_at, isPublished, draft, ...data }) => data;
+
+  const handleSave = async (mode) => {
     if (!db || !form.name.trim()) {
       setFormError('Topic name is required.');
       return;
@@ -138,7 +162,9 @@ export default function TopicsPage() {
       return;
     }
 
-    setSaving(true);
+    if (mode === 'publish' && !window.confirm(`Publish "${form.name.trim()}"? It will appear in the app immediately.`)) return;
+
+    setSaving(mode);
     setFormError('');
 
     try {
@@ -153,29 +179,68 @@ export default function TopicsPage() {
         words,
       };
 
-      if (editingId) {
-        await updateDoc(doc(db, 'topics', editingId), payload);
-      } else {
-        let topicId = slugify(form.name);
+      let topicId = editingId;
+      if (!topicId) {
+        topicId = slugify(form.name);
         if (!topicId) throw new Error('Topic name must contain letters or numbers.');
-        if (topics.some((t) => t.id === topicId)) {
+        if (publishedIds.has(topicId) || draftsById[topicId]) {
           topicId = `${topicId}_${Date.now().toString(36)}`;
         }
-        await setDoc(doc(db, 'topics', topicId), payload);
+      }
+
+      if (mode === 'publish') {
+        const batch = writeBatch(db);
+        batch.set(doc(db, 'topics', topicId), payload, { merge: true });
+        batch.delete(doc(db, DRAFTS, topicId));
+        await batch.commit();
+      } else {
+        await setDoc(doc(db, DRAFTS, topicId), { ...payload, updated_at: serverTimestamp() });
       }
 
       cancelForm();
     } catch (error) {
       setFormError(error.message || 'Unable to save topic.');
     } finally {
-      setSaving(false);
+      setSaving(null);
     }
   };
 
-  const handleDelete = async (topic) => {
+  const handlePublish = async (item) => {
+    if (!db || !item.draft) return;
+    const label = item.isPublished ? `Publish changes to "${item.draft.name}"?` : `Publish "${item.draft.name}"?`;
+    if (!window.confirm(`${label} It will appear in the app immediately.`)) return;
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'topics', item.id), toPublished(item.draft), { merge: true });
+    batch.delete(doc(db, DRAFTS, item.id));
+    await batch.commit();
+  };
+
+  const handleUnpublish = async (item) => {
     if (!db) return;
-    if (!window.confirm(`Delete "${topic.name}"? This removes it from the app immediately.`)) return;
-    await deleteDoc(doc(db, 'topics', topic.id));
+    if (!window.confirm(`Unpublish "${item.name}"? It will be removed from the app and kept as a draft.`)) return;
+    const batch = writeBatch(db);
+    // Keep any pending changes; otherwise the live version becomes the draft.
+    if (!item.draft) batch.set(doc(db, DRAFTS, item.id), { ...toPublished(item), updated_at: serverTimestamp() });
+    batch.delete(doc(db, 'topics', item.id));
+    await batch.commit();
+  };
+
+  const handleDiscardDraft = async (item) => {
+    if (!db) return;
+    if (!window.confirm(`Discard unpublished changes to "${item.name}"? The live version stays as it is.`)) return;
+    await deleteDoc(doc(db, DRAFTS, item.id));
+  };
+
+  const handleDelete = async (item) => {
+    if (!db) return;
+    const message = item.isPublished
+      ? `Delete "${item.name}"? This removes it from the app immediately.`
+      : `Delete draft "${item.draft.name}"?`;
+    if (!window.confirm(message)) return;
+    const batch = writeBatch(db);
+    batch.delete(doc(db, 'topics', item.id));
+    batch.delete(doc(db, DRAFTS, item.id));
+    await batch.commit();
   };
 
   const inputStyle = {
@@ -190,8 +255,28 @@ export default function TopicsPage() {
     boxSizing: 'border-box',
   };
 
+  // One row per topic id. `draft` is the unpublished version (a new topic, or pending changes to a live one).
+  const items = [
+    ...topics.map((t) => ({ ...t, isPublished: true, draft: draftsById[t.id] || null })),
+    ...drafts.filter((d) => !publishedIds.has(d.id)).map((d) => ({ ...d, isPublished: false, draft: d })),
+  ].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
   const searchQuery = search.trim().toLowerCase();
-  const filteredTopics = searchQuery ? topics.filter((topic) => (topic.name || '').toLowerCase().includes(searchQuery)) : topics;
+  const filteredTopics = items.filter((item) => {
+    if (statusFilter === 'published' && !item.isPublished) return false;
+    if (statusFilter === 'drafts' && !item.draft) return false;
+    const name = (item.draft || item).name || '';
+    return !searchQuery || name.toLowerCase().includes(searchQuery);
+  });
+
+  const draftCount = drafts.length;
+
+  const smallButton = (color, border, background) => ({
+    padding: '6px 12px', borderRadius: '7px', border: `1px solid ${border}`, background, color, fontSize: '11px', cursor: 'pointer',
+  });
+  const badge = (color, background, border) => ({
+    background, color, border: `1px solid ${border}`, borderRadius: '6px', padding: '2px 8px', fontSize: '10px', fontWeight: 600,
+  });
 
   const labelStyle = {
     color: theme.textMuted,
@@ -249,10 +334,34 @@ export default function TopicsPage() {
         />
       </div>
 
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+        {[
+          ['all', 'All'],
+          ['published', 'Published'],
+          ['drafts', `Drafts${draftCount ? ` (${draftCount})` : ''}`],
+        ].map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setStatusFilter(key)}
+            style={{
+              padding: '6px 12px',
+              borderRadius: '8px',
+              border: `1px solid ${statusFilter === key ? theme.accentBorder : theme.border}`,
+              background: statusFilter === key ? theme.accentBg : 'transparent',
+              color: statusFilter === key ? theme.accent : theme.textMuted,
+              fontSize: '12px',
+              cursor: 'pointer',
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {showForm && (
         <div style={{ background: theme.bgCard, border: `1px solid ${theme.accentBorder}`, borderRadius: '14px', padding: '18px', marginBottom: '20px' }}>
           <div style={{ color: theme.accent, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: '14px' }}>
-            {editingId ? 'Edit topic' : 'New topic'}
+            {editingId ? (publishedIds.has(editingId) ? 'Edit topic — live in app' : 'Edit draft') : 'New topic'}
           </div>
 
           <div style={{ marginBottom: '12px' }}>
@@ -357,12 +466,24 @@ export default function TopicsPage() {
             </button>
 
             <button
-              onClick={handleSave}
-              disabled={saving}
-              style={{ flex: 2, padding: '9px', borderRadius: '8px', border: `1px solid ${theme.accentBorder}`, background: theme.accentBg, color: theme.accent, fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: saving ? 0.7 : 1 }}
+              onClick={() => handleSave('draft')}
+              disabled={!!saving}
+              style={{ flex: 1, padding: '9px', borderRadius: '8px', border: `1px solid ${theme.border}`, background: 'transparent', color: theme.text, fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: saving ? 0.7 : 1 }}
             >
-              {saving ? 'Saving…' : editingId ? 'Save changes' : 'Create topic'}
+              {saving === 'draft' ? 'Saving…' : 'Save as draft'}
             </button>
+
+            <button
+              onClick={() => handleSave('publish')}
+              disabled={!!saving}
+              style={{ flex: 1, padding: '9px', borderRadius: '8px', border: `1px solid ${theme.accentBorder}`, background: theme.accentBg, color: theme.accent, fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: saving ? 0.7 : 1 }}
+            >
+              {saving === 'publish' ? 'Publishing…' : 'Publish'}
+            </button>
+          </div>
+
+          <div style={{ color: theme.textMuted, fontSize: '11px', marginTop: '10px' }}>
+            Drafts are only visible here in the admin panel. {editingId && publishedIds.has(editingId) ? 'The live version stays unchanged until you publish.' : ''}
           </div>
         </div>
       )}
@@ -370,11 +491,15 @@ export default function TopicsPage() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {filteredTopics.length === 0 ? (
           <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '12px', padding: '24px 16px', color: theme.textMuted, fontSize: '12px', textAlign: 'center' }}>
-            {topics.length === 0 ? 'No topics yet. Add one to publish it to the app.' : 'No topics match your search.'}
+            {items.length === 0 ? 'No topics yet. Add one to publish it to the app.' : 'No topics match your filters.'}
           </div>
         ) : (
-          filteredTopics.map((topic) => (
-            <div key={topic.id} style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '12px', padding: '14px 16px' }}>
+          filteredTopics.map((item) => {
+            // Show the version that would be published next: the draft if there is one, otherwise the live topic.
+            const topic = item.draft || item;
+            const previewing = previewId === item.id;
+            return (
+            <div key={item.id} style={{ background: theme.bgCard, border: `1px ${item.isPublished ? 'solid' : 'dashed'} ${item.draft ? theme.accentBorder : theme.border}`, borderRadius: '12px', padding: '14px 16px' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
                 <div style={{ display: 'flex', gap: '12px', flex: 1 }}>
                   <div
@@ -398,9 +523,15 @@ export default function TopicsPage() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                       <div style={{ color: theme.textStrong, fontSize: '14px', fontWeight: 600 }}>{topic.name}</div>
                       {topic.is_premium && (
-                        <span style={{ background: 'rgba(255,193,7,.12)', color: '#f59e0b', border: '1px solid rgba(255,193,7,.25)', borderRadius: '6px', padding: '2px 8px', fontSize: '10px', fontWeight: 600 }}>
+                        <span style={badge('#f59e0b', 'rgba(255,193,7,.12)', 'rgba(255,193,7,.25)')}>
                           PREMIUM
                         </span>
+                      )}
+                      {!item.isPublished && (
+                        <span style={badge(theme.textMuted, 'transparent', theme.border)}>DRAFT</span>
+                      )}
+                      {item.isPublished && item.draft && (
+                        <span style={badge(theme.accent, theme.accentBg, theme.accentBorder)}>UNPUBLISHED CHANGES</span>
                       )}
                     </div>
 
@@ -410,26 +541,73 @@ export default function TopicsPage() {
                   </div>
                 </div>
 
-                {isModerator && (
-                  <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                    <button
-                      onClick={() => startEdit(topic)}
-                      style={{ padding: '6px 12px', borderRadius: '7px', border: `1px solid ${theme.accentBorder}`, background: theme.accentBg, color: theme.accent, fontSize: '11px', cursor: 'pointer' }}
-                    >
-                      Edit
-                    </button>
+                <div style={{ display: 'flex', gap: '8px', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <button onClick={() => setPreviewId(previewing ? null : item.id)} style={smallButton(theme.textMuted, theme.border, 'transparent')}>
+                    {previewing ? 'Hide preview' : 'Preview'}
+                  </button>
 
-                    <button
-                      onClick={() => handleDelete(topic)}
-                      style={{ padding: '6px 12px', borderRadius: '7px', border: `1px solid ${theme.dangerMuted}`, background: 'rgba(255,76,76,.06)', color: theme.danger, fontSize: '11px', cursor: 'pointer' }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                )}
+                  {isModerator && (
+                    <>
+                      {item.draft && (
+                        <button onClick={() => handlePublish(item)} style={{ ...smallButton(theme.accent, theme.accentBorder, theme.accentBg), fontWeight: 600 }}>
+                          {item.isPublished ? 'Publish changes' : 'Publish'}
+                        </button>
+                      )}
+
+                      <button onClick={() => startEdit(item)} style={smallButton(theme.accent, theme.accentBorder, theme.accentBg)}>
+                        Edit
+                      </button>
+
+                      {item.isPublished && item.draft && (
+                        <button onClick={() => handleDiscardDraft(item)} style={smallButton(theme.textMuted, theme.border, 'transparent')}>
+                          Discard changes
+                        </button>
+                      )}
+
+                      {item.isPublished && (
+                        <button onClick={() => handleUnpublish(item)} style={smallButton(theme.textMuted, theme.border, 'transparent')}>
+                          Unpublish
+                        </button>
+                      )}
+
+                      <button onClick={() => handleDelete(item)} style={smallButton(theme.danger, theme.dangerMuted, 'rgba(255,76,76,.06)')}>
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
+
+              {previewing && (
+                <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: `1px solid ${theme.border}` }}>
+                  <div style={{ ...labelStyle, marginBottom: '10px' }}>
+                    {item.draft ? 'Draft preview — not visible in the app' : 'Live in app'}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', color: theme.textMuted, fontSize: '11px', marginBottom: '12px' }}>
+                    <span>Icon: {iconEmoji(topic.icon)} {topic.icon}</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      Color:
+                      <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: topic.color || '#00C4C4', display: 'inline-block' }} />
+                      {topic.color}
+                    </span>
+                    <span>Map: ({topic.pos_x ?? 0}, {topic.pos_y ?? 0})</span>
+                    <span>{topic.is_premium ? 'Premium' : 'Free'}</span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '6px' }}>
+                    {(topic.words || []).map((w, i) => (
+                      <div key={i} style={{ background: theme.bgInput, border: `1px solid ${theme.border}`, borderRadius: '8px', padding: '7px 10px', fontSize: '12px' }}>
+                        <div style={{ color: theme.textStrong, fontWeight: 600 }}>{w.word}</div>
+                        <div style={{ color: theme.textMuted }}>{w.translation || '—'}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>
