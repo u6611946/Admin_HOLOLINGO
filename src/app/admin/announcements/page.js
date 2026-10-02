@@ -67,11 +67,15 @@ export default function AnnouncementsPage() {
     status: 'draft',
   });
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
 
   const [showEventForm, setShowEventForm] = useState(false);
   const [eventForm, setEventForm] = useState({ name: '', description: '', theme: '', startAt: '', endAt: '', rewardXp: '', rewardTokens: '', targetCount: '' });
   const [savingEvent, setSavingEvent] = useState(false);
   const [eventFormError, setEventFormError] = useState('');
+  const [makeLiveOnCreate, setMakeLiveOnCreate] = useState(true);
+  const [currentEvent, setCurrentEvent] = useState(null);
+  const [liveError, setLiveError] = useState('');
 
   const [dailyWordsEventId, setDailyWordsEventId] = useState(null);
   const [dailyWordsText, setDailyWordsText] = useState('');
@@ -131,6 +135,17 @@ export default function AnnouncementsPage() {
     return unsubscribe;
   }, []);
 
+  // config/current_event is the one event the app treats as live (banner, Daily Challenge).
+  useEffect(() => {
+    if (!db) return undefined;
+
+    return onSnapshot(
+      doc(db, 'config', 'current_event'),
+      (snapshot) => setCurrentEvent(snapshot.exists() ? snapshot.data() : null),
+      (error) => setLiveError(`Unable to load the live event: ${error.message}`),
+    );
+  }, []);
+
   const now = new Date();
   const eventList = events.map((event) => {
     const startAt = asDate(event.start_at);
@@ -138,6 +153,15 @@ export default function AnnouncementsPage() {
     const status = endAt && now > endAt ? 'ended' : startAt && now < startAt ? 'upcoming' : 'active';
     return { ...event, startAt, endAt, status };
   }).sort((a, b) => (b.startAt?.getTime() || 0) - (a.startAt?.getTime() || 0));
+
+  // Same check the app does: active, and inside its start/end window.
+  const liveStart = asDate(currentEvent?.start_at);
+  const liveEnd = asDate(currentEvent?.end_at);
+  const liveEventId = currentEvent?.active === true
+    && (!liveStart || now >= liveStart)
+    && (!liveEnd || now <= liveEnd)
+    ? currentEvent.event_id
+    : null;
 
   const set = (k, v) => {
     setForm((p) => ({
@@ -147,9 +171,14 @@ export default function AnnouncementsPage() {
   };
 
   const handleCreate = async () => {
-    if (!db || !form.title.trim() || !form.body.trim()) return;
+    if (!db) return;
+    if (!form.title.trim() || !form.body.trim()) {
+      setFormError('Add a title and a message.');
+      return;
+    }
 
     setSaving(true);
+    setFormError('');
 
     try {
       const payload = {
@@ -170,6 +199,8 @@ export default function AnnouncementsPage() {
         status: 'draft',
       });
       setShowForm(false);
+    } catch (error) {
+      setFormError(error.message || 'Unable to create announcement.');
     } finally {
       setSaving(false);
     }
@@ -192,7 +223,20 @@ export default function AnnouncementsPage() {
   };
 
   const handleCreateEvent = async () => {
-    if (!db || !eventForm.name.trim() || !eventForm.startAt || !eventForm.endAt) return;
+    if (!db) return;
+    if (!eventForm.name.trim() || !eventForm.startAt || !eventForm.endAt) {
+      setEventFormError('Add a name, a start date and an end date.');
+      return;
+    }
+
+    // Start at the beginning of the start day and end at the end of the end day (local time),
+    // so an event ending "Oct 31" is still live all of Oct 31.
+    const startAt = new Date(`${eventForm.startAt}T00:00:00`);
+    const endAt = new Date(`${eventForm.endAt}T23:59:59`);
+    if (endAt <= startAt) {
+      setEventFormError('The end date must be on or after the start date.');
+      return;
+    }
 
     setSavingEvent(true);
     setEventFormError('');
@@ -200,8 +244,9 @@ export default function AnnouncementsPage() {
     try {
       let eventId = slugify(eventForm.name);
       if (!eventId) throw new Error('Event name must contain letters or numbers.');
-      if (events.some((event) => event.id === eventId)) {
-        eventId = `${eventId}_${Date.now().toString(36)}`;
+      const baseId = eventId;
+      for (let n = 2; events.some((event) => event.id === eventId); n += 1) {
+        eventId = `${baseId}_${n}`;
       }
 
       // merge: true so a slugified name that happens to collide with an
@@ -213,12 +258,16 @@ export default function AnnouncementsPage() {
         name: eventForm.name.trim(),
         description: eventForm.description.trim(),
         theme: eventForm.theme.trim(),
-        start_at: new Date(eventForm.startAt),
-        end_at: new Date(eventForm.endAt),
+        start_at: startAt,
+        end_at: endAt,
         reward_xp: Number(eventForm.rewardXp) || 0,
         reward_tokens: Number(eventForm.rewardTokens) || 0,
         target_count: Number(eventForm.targetCount) || 0,
       }, { merge: true });
+
+      if (makeLiveOnCreate && isSuperAdmin) {
+        await setLiveEvent({ id: eventId, name: eventForm.name.trim(), theme: eventForm.theme.trim(), start_at: startAt, end_at: endAt });
+      }
 
       setEventForm({ name: '', description: '', theme: '', startAt: '', endAt: '', rewardXp: '', rewardTokens: '', targetCount: '' });
       setShowEventForm(false);
@@ -226,6 +275,45 @@ export default function AnnouncementsPage() {
       setEventFormError(error.message || 'Unable to create event.');
     } finally {
       setSavingEvent(false);
+    }
+  };
+
+  // Replaces config/current_event, which is what the app reads to decide the live event.
+  const setLiveEvent = async (event) => {
+    await setDoc(doc(db, 'config', 'current_event'), {
+      event_id: event.id,
+      name: event.name || event.id,
+      type: event.theme || 'special_event',
+      start_at: asDate(event.start_at),
+      end_at: asDate(event.end_at),
+      date: asDate(event.start_at),
+      active: true,
+    });
+  };
+
+  const makeLive = async (event) => {
+    if (!db) return;
+    if (event.endAt && event.endAt < new Date()) {
+      setLiveError(`"${event.name}" has already ended. Create a new event, or change its end date first.`);
+      return;
+    }
+    if (!window.confirm(`Make "${event.name || event.id}" the live event in the app? This replaces the current live event.`)) return;
+    setLiveError('');
+    try {
+      await setLiveEvent(event);
+    } catch (error) {
+      setLiveError(`Unable to make the event live: ${error.message}`);
+    }
+  };
+
+  const endLive = async () => {
+    if (!db || !currentEvent) return;
+    if (!window.confirm(`End "${currentEvent.name}" in the app now?`)) return;
+    setLiveError('');
+    try {
+      await updateDoc(doc(db, 'config', 'current_event'), { active: false });
+    } catch (error) {
+      setLiveError(`Unable to end the event: ${error.message}`);
     }
   };
 
@@ -527,6 +615,8 @@ export default function AnnouncementsPage() {
               </select>
             </div>
           </div>
+
+          {formError && <div style={{ color: theme.danger, fontSize: '11px', marginBottom: '12px' }}>{formError}</div>}
 
           <div
             style={{
@@ -847,6 +937,13 @@ export default function AnnouncementsPage() {
             </div>
           </div>
 
+          {isSuperAdmin && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', cursor: 'pointer', color: theme.text, fontSize: '13px' }}>
+              <input type="checkbox" checked={makeLiveOnCreate} onChange={(e) => setMakeLiveOnCreate(e.target.checked)} />
+              Make this the live event in the app (replaces the current one)
+            </label>
+          )}
+
           {eventFormError && <div style={{ color: theme.danger, fontSize: '11px', marginBottom: '12px' }}>{eventFormError}</div>}
 
           <div style={{ display: 'flex', gap: '10px' }}>
@@ -860,6 +957,16 @@ export default function AnnouncementsPage() {
 
       {eventsError && (
         <div style={{ background: 'rgba(255,107,107,.08)', border: '1px solid rgba(255,107,107,.25)', borderRadius: '10px', padding: '10px 14px', color: theme.danger, fontSize: '12px', marginBottom: '16px' }}>{eventsError}</div>
+      )}
+
+      {liveError && (
+        <div style={{ background: 'rgba(255,107,107,.08)', border: '1px solid rgba(255,107,107,.25)', borderRadius: '10px', padding: '10px 14px', color: theme.danger, fontSize: '12px', marginBottom: '16px' }}>{liveError}</div>
+      )}
+
+      {!liveEventId && (
+        <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '10px', padding: '10px 14px', color: theme.textMuted, fontSize: '12px', marginBottom: '16px' }}>
+          No event is live in the app right now, so the Daily Challenge is unavailable.{isSuperAdmin ? ' Use “Make live” on an event to start one.' : ' A super admin can make an event live.'}
+        </div>
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '10px' }}>
@@ -879,6 +986,9 @@ export default function AnnouncementsPage() {
                       <span style={{ background: st.bg, color: st.color, border: `1px solid ${st.border}`, borderRadius: '6px', padding: '2px 8px', fontSize: '10px', fontWeight: 600, textTransform: 'uppercase' }}>{event.status}</span>
                       {event.theme && (
                         <span style={{ background: theme.bgInput, color: theme.textMuted, border: `1px solid ${theme.border}`, borderRadius: '6px', padding: '2px 8px', fontSize: '10px', textTransform: 'capitalize' }}>{event.theme}</span>
+                      )}
+                      {liveEventId === event.id && (
+                        <span style={{ background: 'rgba(74,222,128,.12)', color: '#4ade80', border: '1px solid rgba(74,222,128,.3)', borderRadius: '6px', padding: '2px 8px', fontSize: '10px', fontWeight: 700 }}>● LIVE IN APP</span>
                       )}
                     </div>
 
@@ -901,7 +1011,22 @@ export default function AnnouncementsPage() {
                   </div>
 
                   {isModerator && (
-                    <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                    <div style={{ display: 'flex', gap: '8px', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      {isSuperAdmin && (liveEventId === event.id ? (
+                        <button
+                          onClick={endLive}
+                          style={{ padding: '6px 12px', borderRadius: '7px', border: `1px solid ${theme.border}`, background: 'transparent', color: theme.textMuted, fontSize: '11px', cursor: 'pointer' }}
+                        >
+                          End event
+                        </button>
+                      ) : event.status !== 'ended' && (
+                        <button
+                          onClick={() => makeLive(event)}
+                          style={{ padding: '6px 12px', borderRadius: '7px', border: '1px solid rgba(74,222,128,.35)', background: 'rgba(74,222,128,.1)', color: '#4ade80', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
+                        >
+                          Make live
+                        </button>
+                      ))}
                       <button
                         onClick={() => openDailyWordsEditor(event.id)}
                         style={{ padding: '6px 12px', borderRadius: '7px', border: `1px solid ${theme.accentBorder}`, background: theme.accentBg, color: theme.accent, fontSize: '11px', cursor: 'pointer' }}

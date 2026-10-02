@@ -505,6 +505,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Purchase history for the admin panel's Subscription page. Not written by
+    // the app yet; should only ever be written server-side after payment
+    // verification, never by a client.
+    match /purchases/{id} {
+      allow read: if isPanelUser();
+      allow write: if false;
+    }
+
     match /words/{wordId} {
       allow read: if isPanelUser();
       allow write: if isModerator();
