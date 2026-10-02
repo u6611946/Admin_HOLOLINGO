@@ -977,71 +977,66 @@ export default function AnnouncementsPage() {
         ) : (
           eventList.map((event) => {
             const st = eventStatusStyle[event.status] || eventStatusStyle.upcoming;
+            const badgeStyle = { borderRadius: '6px', padding: '2px 8px', fontSize: '10px', whiteSpace: 'nowrap' };
+            const actionStyle = { padding: '6px 12px', borderRadius: '7px', fontSize: '11px', cursor: 'pointer', whiteSpace: 'nowrap' };
             return (
-              <div key={event.id} style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: '12px', padding: '14px 16px' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                      <div style={{ color: theme.textStrong, fontSize: '14px', fontWeight: 600 }}>{event.name || event.id}</div>
-                      <span style={{ background: st.bg, color: st.color, border: `1px solid ${st.border}`, borderRadius: '6px', padding: '2px 8px', fontSize: '10px', fontWeight: 600, textTransform: 'uppercase' }}>{event.status}</span>
-                      {event.theme && (
-                        <span style={{ background: theme.bgInput, color: theme.textMuted, border: `1px solid ${theme.border}`, borderRadius: '6px', padding: '2px 8px', fontSize: '10px', textTransform: 'capitalize' }}>{event.theme}</span>
-                      )}
-                      {liveEventId === event.id && (
-                        <span style={{ background: 'rgba(74,222,128,.12)', color: '#4ade80', border: '1px solid rgba(74,222,128,.3)', borderRadius: '6px', padding: '2px 8px', fontSize: '10px', fontWeight: 700 }}>● LIVE IN APP</span>
-                      )}
-                    </div>
-
-                    {event.description && (
-                      <div style={{ color: theme.textMuted, fontSize: '12px', marginBottom: '8px' }}>{event.description}</div>
-                    )}
-
-                    <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
-                      <span style={{ color: theme.textMuted, fontSize: '11px' }}>▦ {formatDate(event.startAt)} – {formatDate(event.endAt)}</span>
-                      {typeof event.target_count === 'number' && (
-                        <span style={{ color: theme.textMuted, fontSize: '11px' }}>◎ {event.target_count} targets</span>
-                      )}
-                      {typeof event.reward_xp === 'number' && (
-                        <span style={{ color: theme.textMuted, fontSize: '11px' }}>✦ {event.reward_xp} XP</span>
-                      )}
-                      {typeof event.reward_tokens === 'number' && (
-                        <span style={{ color: theme.textMuted, fontSize: '11px' }}>◆ {event.reward_tokens} tokens</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {isModerator && (
-                    <div style={{ display: 'flex', gap: '8px', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                      {isSuperAdmin && (liveEventId === event.id ? (
-                        <button
-                          onClick={endLive}
-                          style={{ padding: '6px 12px', borderRadius: '7px', border: `1px solid ${theme.border}`, background: 'transparent', color: theme.textMuted, fontSize: '11px', cursor: 'pointer' }}
-                        >
-                          End event
-                        </button>
-                      ) : event.status !== 'ended' && (
-                        <button
-                          onClick={() => makeLive(event)}
-                          style={{ padding: '6px 12px', borderRadius: '7px', border: '1px solid rgba(74,222,128,.35)', background: 'rgba(74,222,128,.1)', color: '#4ade80', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
-                        >
-                          Make live
-                        </button>
-                      ))}
-                      <button
-                        onClick={() => openDailyWordsEditor(event.id)}
-                        style={{ padding: '6px 12px', borderRadius: '7px', border: `1px solid ${theme.accentBorder}`, background: theme.accentBg, color: theme.accent, fontSize: '11px', cursor: 'pointer' }}
-                      >
-                        Today&apos;s words
-                      </button>
-                      <button
-                        onClick={() => deleteEvent(event.id)}
-                        style={{ padding: '6px 12px', borderRadius: '7px', border: `1px solid ${theme.dangerMuted}`, background: 'rgba(255,76,76,.06)', color: theme.danger, fontSize: '11px', cursor: 'pointer' }}
-                      >
-                        Delete
-                      </button>
-                    </div>
+              <div
+                key={event.id}
+                style={{
+                  background: theme.bgCard,
+                  border: `1px solid ${liveEventId === event.id ? 'rgba(74,222,128,.35)' : theme.border}`,
+                  borderRadius: '12px',
+                  padding: '14px 16px',
+                  minWidth: 0,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                  <div style={{ color: theme.textStrong, fontSize: '15px', fontWeight: 600, marginRight: '4px' }}>{event.name || event.id}</div>
+                  {liveEventId === event.id && (
+                    <span style={{ ...badgeStyle, background: 'rgba(74,222,128,.12)', color: '#4ade80', border: '1px solid rgba(74,222,128,.3)', fontWeight: 700 }}>● LIVE IN APP</span>
+                  )}
+                  <span style={{ ...badgeStyle, background: st.bg, color: st.color, border: `1px solid ${st.border}`, fontWeight: 600, textTransform: 'uppercase' }}>{event.status}</span>
+                  {event.theme && (
+                    <span style={{ ...badgeStyle, background: theme.bgInput, color: theme.textMuted, border: `1px solid ${theme.border}`, textTransform: 'capitalize' }}>{event.theme}</span>
                   )}
                 </div>
+
+                {event.description && (
+                  <div style={{ color: theme.textMuted, fontSize: '12px', marginBottom: '8px' }}>{event.description}</div>
+                )}
+
+                <div style={{ display: 'flex', gap: '6px 14px', flexWrap: 'wrap' }}>
+                  <span style={{ color: theme.textMuted, fontSize: '11px' }}>▦ {formatDate(event.startAt)} – {formatDate(event.endAt)}</span>
+                  {typeof event.target_count === 'number' && (
+                    <span style={{ color: theme.textMuted, fontSize: '11px' }}>◎ {event.target_count} targets</span>
+                  )}
+                  {typeof event.reward_xp === 'number' && (
+                    <span style={{ color: theme.textMuted, fontSize: '11px' }}>✦ {event.reward_xp} XP</span>
+                  )}
+                  {typeof event.reward_tokens === 'number' && (
+                    <span style={{ color: theme.textMuted, fontSize: '11px' }}>◆ {event.reward_tokens} tokens</span>
+                  )}
+                </div>
+
+                {isModerator && (
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '12px', paddingTop: '12px', borderTop: `1px solid ${theme.border}` }}>
+                    {isSuperAdmin && (liveEventId === event.id ? (
+                      <button onClick={endLive} style={{ ...actionStyle, border: `1px solid ${theme.border}`, background: 'transparent', color: theme.textMuted }}>
+                        End event
+                      </button>
+                    ) : event.status !== 'ended' && (
+                      <button onClick={() => makeLive(event)} style={{ ...actionStyle, border: '1px solid rgba(74,222,128,.35)', background: 'rgba(74,222,128,.1)', color: '#4ade80', fontWeight: 600 }}>
+                        Make live
+                      </button>
+                    ))}
+                    <button onClick={() => openDailyWordsEditor(event.id)} style={{ ...actionStyle, border: `1px solid ${theme.accentBorder}`, background: theme.accentBg, color: theme.accent }}>
+                      Today&apos;s words
+                    </button>
+                    <button onClick={() => deleteEvent(event.id)} style={{ ...actionStyle, marginLeft: 'auto', border: `1px solid ${theme.dangerMuted}`, background: 'rgba(255,76,76,.06)', color: theme.danger }}>
+                      Delete
+                    </button>
+                  </div>
+                )}
 
                 {dailyWordsEventId === event.id && (
                   <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: `1px solid ${theme.border}` }}>
