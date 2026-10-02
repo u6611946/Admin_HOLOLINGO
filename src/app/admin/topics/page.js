@@ -50,7 +50,6 @@ const emptyForm = {
   color: '#00C4C4',
   posX: '0.5',
   posY: '0.5',
-  order: '0',
   isPremium: false,
   words: [{ word: '', translation: '' }],
 };
@@ -65,6 +64,9 @@ export default function TopicsPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [previewId, setPreviewId] = useState(null);
+  const [dragId, setDragId] = useState(null);
+  const [dropTargetId, setDropTargetId] = useState(null);
+  const [reorderError, setReorderError] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -84,7 +86,7 @@ export default function TopicsPage() {
     );
 
     const unsubscribeDrafts = onSnapshot(
-      query(collection(db, DRAFTS), orderBy('order', 'asc')),
+      collection(db, DRAFTS),
       (snapshot) => setDrafts(snapshot.docs.map((document) => ({ id: document.id, ...document.data() }))),
       (error) => setLoadError(`Unable to load drafts: ${error.message}`),
     );
@@ -126,7 +128,6 @@ export default function TopicsPage() {
       color: topic.color || '#00C4C4',
       posX: String(topic.pos_x ?? 0.5),
       posY: String(topic.pos_y ?? 0.5),
-      order: String(topic.order ?? 0),
       isPremium: !!topic.is_premium,
       words: topic.words?.length ? topic.words.map((w) => ({ word: w.word || '', translation: w.translation || '' })) : [{ word: '', translation: '' }],
     });
@@ -146,6 +147,15 @@ export default function TopicsPage() {
 
   // Strip admin-only and UI-only fields so they never reach the stored doc.
   const toPublished = ({ id, updated_at, isPublished, draft, ...data }) => data;
+
+  // `order` (the topic's level) is managed only by arranging the list: a live topic keeps its
+  // place when changes are published, and a newly published topic goes to the end.
+  const withOrder = (topicId, data) => {
+    const { order, ...rest } = data;
+    if (publishedIds.has(topicId)) return rest;
+    const maxOrder = topics.reduce((max, t) => Math.max(max, Number(t.order) || 0), 0);
+    return { ...rest, order: maxOrder + 1 };
+  };
 
   const handleSave = async (mode) => {
     if (!db || !form.name.trim()) {
@@ -174,7 +184,6 @@ export default function TopicsPage() {
         color: form.color,
         pos_x: Number(form.posX) || 0,
         pos_y: Number(form.posY) || 0,
-        order: Number(form.order) || 0,
         is_premium: form.isPremium,
         words,
       };
@@ -190,7 +199,7 @@ export default function TopicsPage() {
 
       if (mode === 'publish') {
         const batch = writeBatch(db);
-        batch.set(doc(db, 'topics', topicId), payload, { merge: true });
+        batch.set(doc(db, 'topics', topicId), withOrder(topicId, payload), { merge: true });
         batch.delete(doc(db, DRAFTS, topicId));
         await batch.commit();
       } else {
@@ -210,7 +219,7 @@ export default function TopicsPage() {
     const label = item.isPublished ? `Publish changes to "${item.draft.name}"?` : `Publish "${item.draft.name}"?`;
     if (!window.confirm(`${label} It will appear in the app immediately.`)) return;
     const batch = writeBatch(db);
-    batch.set(doc(db, 'topics', item.id), toPublished(item.draft), { merge: true });
+    batch.set(doc(db, 'topics', item.id), withOrder(item.id, toPublished(item.draft)), { merge: true });
     batch.delete(doc(db, DRAFTS, item.id));
     await batch.commit();
   };
@@ -243,6 +252,33 @@ export default function TopicsPage() {
     await batch.commit();
   };
 
+  // Moves a published topic to a new position and renumbers `order` as 1..N, which is the
+  // level the app shows and the sequence free topics unlock in.
+  const moveTopic = async (topicId, toIndex) => {
+    if (!db) return;
+    const fromIndex = topics.findIndex((t) => t.id === topicId);
+    if (fromIndex === -1 || toIndex < 0 || toIndex >= topics.length || fromIndex === toIndex) return;
+
+    const reordered = [...topics];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+
+    const previous = topics;
+    setTopics(reordered.map((t, i) => ({ ...t, order: i + 1 })));
+    setReorderError('');
+
+    try {
+      const batch = writeBatch(db);
+      reordered.forEach((t, i) => {
+        if (t.order !== i + 1) batch.update(doc(db, 'topics', t.id), { order: i + 1 });
+      });
+      await batch.commit();
+    } catch (error) {
+      setTopics(previous);
+      setReorderError(`Unable to save the new order: ${error.message}`);
+    }
+  };
+
   const inputStyle = {
     width: '100%',
     background: theme.bgInput,
@@ -256,10 +292,14 @@ export default function TopicsPage() {
   };
 
   // One row per topic id. `draft` is the unpublished version (a new topic, or pending changes to a live one).
+  // Published topics come first in level order, then drafts that aren't in the app yet.
   const items = [
-    ...topics.map((t) => ({ ...t, isPublished: true, draft: draftsById[t.id] || null })),
-    ...drafts.filter((d) => !publishedIds.has(d.id)).map((d) => ({ ...d, isPublished: false, draft: d })),
-  ].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    ...topics.map((t, i) => ({ ...t, isPublished: true, level: i + 1, draft: draftsById[t.id] || null })),
+    ...drafts
+      .filter((d) => !publishedIds.has(d.id))
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+      .map((d) => ({ ...d, isPublished: false, draft: d })),
+  ];
 
   const searchQuery = search.trim().toLowerCase();
   const filteredTopics = items.filter((item) => {
@@ -270,6 +310,14 @@ export default function TopicsPage() {
   });
 
   const draftCount = drafts.length;
+
+  // Reordering needs the full published list on screen, so it's off while searching or viewing drafts only.
+  const canArrange = isModerator && !searchQuery && statusFilter !== 'drafts' && topics.length > 1;
+
+  const endDrag = () => {
+    setDragId(null);
+    setDropTargetId(null);
+  };
 
   const smallButton = (color, border, background) => ({
     padding: '6px 12px', borderRadius: '7px', border: `1px solid ${border}`, background, color, fontSize: '11px', cursor: 'pointer',
@@ -358,6 +406,16 @@ export default function TopicsPage() {
         ))}
       </div>
 
+      {isModerator && topics.length > 1 && (
+        <div style={{ color: theme.textMuted, fontSize: '11px', marginBottom: '12px' }}>
+          {canArrange
+            ? 'Drag topics (or use ↑ ↓) to set their level. Free topics unlock in this order in the app.'
+            : 'Clear the search and show All or Published to rearrange levels.'}
+        </div>
+      )}
+
+      {reorderError && <div style={{ color: theme.danger, fontSize: '11px', marginBottom: '12px' }}>{reorderError}</div>}
+
       {showForm && (
         <div style={{ background: theme.bgCard, border: `1px solid ${theme.accentBorder}`, borderRadius: '14px', padding: '18px', marginBottom: '20px' }}>
           <div style={{ color: theme.accent, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: '14px' }}>
@@ -393,7 +451,7 @@ export default function TopicsPage() {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
             <div>
               <div style={labelStyle}>Map X (0–1)</div>
               <input type="number" min="0" max="1" step="0.01" style={inputStyle} value={form.posX} onChange={(e) => set('posX', e.target.value)} />
@@ -401,10 +459,6 @@ export default function TopicsPage() {
             <div>
               <div style={labelStyle}>Map Y (0–1)</div>
               <input type="number" min="0" max="1" step="0.01" style={inputStyle} value={form.posY} onChange={(e) => set('posY', e.target.value)} />
-            </div>
-            <div>
-              <div style={labelStyle}>Order</div>
-              <input type="number" style={inputStyle} value={form.order} onChange={(e) => set('order', e.target.value)} />
             </div>
           </div>
 
@@ -498,10 +552,69 @@ export default function TopicsPage() {
             // Show the version that would be published next: the draft if there is one, otherwise the live topic.
             const topic = item.draft || item;
             const previewing = previewId === item.id;
+            const draggable = canArrange && item.isPublished;
+            const isDropTarget = draggable && dropTargetId === item.id && dragId && dragId !== item.id;
             return (
-            <div key={item.id} style={{ background: theme.bgCard, border: `1px ${item.isPublished ? 'solid' : 'dashed'} ${item.draft ? theme.accentBorder : theme.border}`, borderRadius: '12px', padding: '14px 16px' }}>
+            <div
+              key={item.id}
+              draggable={draggable}
+              onDragStart={draggable ? (e) => { e.dataTransfer.effectAllowed = 'move'; setDragId(item.id); } : undefined}
+              onDragOver={draggable && dragId ? (e) => { e.preventDefault(); setDropTargetId(item.id); } : undefined}
+              onDrop={draggable && dragId ? (e) => { e.preventDefault(); moveTopic(dragId, item.level - 1); endDrag(); } : undefined}
+              onDragEnd={draggable ? endDrag : undefined}
+              style={{
+                background: theme.bgCard,
+                border: `1px ${item.isPublished ? 'solid' : 'dashed'} ${isDropTarget ? theme.accent : item.draft ? theme.accentBorder : theme.border}`,
+                boxShadow: isDropTarget ? `0 0 0 1px ${theme.accent}` : 'none',
+                borderRadius: '12px',
+                padding: '14px 16px',
+                opacity: dragId === item.id ? 0.5 : 1,
+                cursor: draggable ? 'grab' : 'default',
+              }}
+            >
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
-                <div style={{ display: 'flex', gap: '12px', flex: 1 }}>
+                <div style={{ display: 'flex', gap: '12px', flex: 1, alignItems: 'center' }}>
+                  <div style={{ width: '46px', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                    {item.isPublished ? (
+                      <>
+                        <div style={{ color: theme.textMuted, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '.06em' }}>Level</div>
+                        <div style={{ color: theme.textStrong, fontSize: '18px', fontWeight: 700, lineHeight: 1 }}>{item.level}</div>
+                        {canArrange && (
+                          <div style={{ display: 'flex', gap: '2px' }}>
+                            {[['↑', -1], ['↓', 1]].map(([arrow, step]) => {
+                              const target = item.level - 1 + step;
+                              const disabled = target < 0 || target >= topics.length;
+                              return (
+                                <button
+                                  key={arrow}
+                                  onClick={() => moveTopic(item.id, target)}
+                                  disabled={disabled}
+                                  aria-label={step < 0 ? `Move ${topic.name} up` : `Move ${topic.name} down`}
+                                  style={{
+                                    width: '20px',
+                                    height: '20px',
+                                    padding: 0,
+                                    borderRadius: '5px',
+                                    border: `1px solid ${theme.border}`,
+                                    background: 'transparent',
+                                    color: theme.textMuted,
+                                    fontSize: '11px',
+                                    cursor: disabled ? 'not-allowed' : 'pointer',
+                                    opacity: disabled ? 0.3 : 1,
+                                  }}
+                                >
+                                  {arrow}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div style={{ color: theme.textMuted, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '.06em', textAlign: 'center' }}>No level</div>
+                    )}
+                  </div>
+
                   <div
                     style={{
                       width: '40px',
@@ -536,7 +649,8 @@ export default function TopicsPage() {
                     </div>
 
                     <div style={{ color: theme.textMuted, fontSize: '11px' }}>
-                      {(topic.words?.length || 0)} word{(topic.words?.length || 0) === 1 ? '' : 's'} · order {topic.order ?? 0}
+                      {(topic.words?.length || 0)} word{(topic.words?.length || 0) === 1 ? '' : 's'}
+                      {!item.isPublished && ' · gets the next level when published'}
                     </div>
                   </div>
                 </div>
