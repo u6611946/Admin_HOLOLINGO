@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { adminAuth, adminDb } from '../../../../lib/firebase-admin';
+import { adminAuth, adminDb, adminInitError } from '../../../../lib/firebase-admin';
 
 export const runtime = 'nodejs';
 
@@ -7,7 +7,7 @@ const INVITE_TTL_MS = 30 * 60 * 1000;
 
 // Managing other admins is super-admin only — moderators/viewers never reach this route.
 async function verifySuperAdmin(request) {
-  if (!adminAuth || !adminDb) throw new Error('Server Firebase Admin credentials are not configured.');
+  if (!adminAuth || !adminDb) throw new Error(adminInitError || 'Server Firebase Admin credentials are not configured.');
   const authorization = request.headers.get('authorization');
   if (!authorization?.startsWith('Bearer ')) throw new Error('Authentication required.');
   const token = await adminAuth.verifyIdToken(authorization.slice(7));

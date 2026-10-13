@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { adminAuth, adminDb } from '../../../../lib/firebase-admin';
+import { adminAuth, adminDb, adminInitError } from '../../../../lib/firebase-admin';
 
 export const runtime = 'nodejs';
 
@@ -9,7 +9,7 @@ const RENAME_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
 // Enforced here (not just in the UI) since a client-side-only check can be bypassed.
 export async function PATCH(request) {
   try {
-    if (!adminAuth || !adminDb) throw new Error('Server Firebase Admin credentials are not configured.');
+    if (!adminAuth || !adminDb) throw new Error(adminInitError || 'Server Firebase Admin credentials are not configured.');
 
     const authorization = request.headers.get('authorization');
     if (!authorization?.startsWith('Bearer ')) throw new Error('Authentication required.');

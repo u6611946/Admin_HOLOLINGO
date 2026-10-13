@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { adminAuth, adminDb } from '../../../../lib/firebase-admin';
+import { adminAuth, adminDb, adminInitError } from '../../../../lib/firebase-admin';
 
 export const runtime = 'nodejs';
 
@@ -7,7 +7,7 @@ const PANEL_ROLES = ['super_admin', 'admin', 'viewer'];
 const MODERATOR_ROLES = ['super_admin', 'admin'];
 
 async function verifyRole(request, allowedRoles, permissionError) {
-  if (!adminAuth || !adminDb) throw new Error('Server Firebase Admin credentials are not configured.');
+  if (!adminAuth || !adminDb) throw new Error(adminInitError || 'Server Firebase Admin credentials are not configured.');
   const authorization = request.headers.get('authorization');
   if (!authorization?.startsWith('Bearer ')) throw new Error('Authentication required.');
   const token = await adminAuth.verifyIdToken(authorization.slice(7));
