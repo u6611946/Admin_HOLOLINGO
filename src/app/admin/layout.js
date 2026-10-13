@@ -1,9 +1,11 @@
 import Sidebar from '../components/admin/Sidebar';
+import AuthGuard from '../components/admin/AuthGuard';
 
 export const metadata = { title: 'Hololingo Admin' };
 
 export default function AdminLayout({ children }) {
   return (
+    <AuthGuard>
     <div
       style={{
         display: 'flex',
@@ -30,5 +32,6 @@ export default function AdminLayout({ children }) {
         {children}
       </main>
     </div>
+    </AuthGuard>
   );
 }
