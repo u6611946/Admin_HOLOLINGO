@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, setDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { useTheme } from '../../ThemeContext';
@@ -69,6 +69,7 @@ export default function TopicsPage() {
   const [reorderError, setReorderError] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const formRef = useRef(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(null);
   const [formError, setFormError] = useState('');
@@ -134,6 +135,12 @@ export default function TopicsPage() {
     setFormError('');
     setShowForm(true);
   };
+
+  // The form opens at the top of the page; bring it into view so clicking
+  // "New topic" or "Edit" further down the list doesn't seem to do nothing.
+  useEffect(() => {
+    if (showForm) formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [showForm, editingId]);
 
   const cancelForm = () => {
     setShowForm(false);
@@ -417,7 +424,7 @@ export default function TopicsPage() {
       {reorderError && <div style={{ color: theme.danger, fontSize: '11px', marginBottom: '12px' }}>{reorderError}</div>}
 
       {showForm && (
-        <div style={{ background: theme.bgCard, border: `1px solid ${theme.accentBorder}`, borderRadius: '14px', padding: '18px', marginBottom: '20px' }}>
+        <div ref={formRef} style={{ scrollMarginTop: '16px', background: theme.bgCard, border: `1px solid ${theme.accentBorder}`, borderRadius: '14px', padding: '18px', marginBottom: '20px' }}>
           <div style={{ color: theme.accent, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: '14px' }}>
             {editingId ? (publishedIds.has(editingId) ? 'Edit topic — live in app' : 'Edit draft') : 'New topic'}
           </div>
@@ -451,15 +458,8 @@ export default function TopicsPage() {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-            <div>
-              <div style={labelStyle}>Map X (0–1)</div>
-              <input type="number" min="0" max="1" step="0.01" style={inputStyle} value={form.posX} onChange={(e) => set('posX', e.target.value)} />
-            </div>
-            <div>
-              <div style={labelStyle}>Map Y (0–1)</div>
-              <input type="number" min="0" max="1" step="0.01" style={inputStyle} value={form.posY} onChange={(e) => set('posY', e.target.value)} />
-            </div>
+          <div style={{ color: theme.textMuted, fontSize: '11px', marginBottom: '16px' }}>
+            The app places topics on the map automatically by level, from bottom to top, so a new topic appears at the top of the path.
           </div>
 
           <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', cursor: 'pointer', color: theme.text, fontSize: '13px' }}>
